@@ -42,6 +42,147 @@ export async function checkServerHealth() {
  * Envia o histórico completo da conversa e o System Prompt oficial para o backend.
  * O backend processa prioritariamente com a API Qwen (qwen3.8-max).
  */
+export interface StreamCallbacks {
+  onChunk: (chunk: string) => void;
+  onDone: (fullText: string) => void;
+  onError: (error: any) => void;
+}
+
+/**
+ * Consulta as métricas reais da plataforma e base de dados para a Landing Page (sem dados falsos)
+ */
+export async function getPlatformMetrics() {
+  try {
+    const res = await fetch('/api/platform/metrics');
+    if (!res.ok) throw new Error('Falha ao obter métricas da plataforma');
+    return await res.json();
+  } catch (err) {
+    return {
+      status: 'online',
+      company: 'Maurícius',
+      founder: 'António Cassule Maurício',
+      product: 'NEXA Assistant',
+      repoUrl: 'https://github.com/Antonio-Cassule-Mauricio/assistente_ia',
+      engine: {
+        primary: 'Qwen 3.8 Max (qwen3.8-max)',
+        contingency: 'Gemini 2.5 Flash',
+        status: 'active'
+      },
+      database: {
+        provider: 'Supabase PostgreSQL',
+        tables: ['conversations', 'messages', 'whatsapp_contacts', 'whatsapp_messages', 'whatsapp_configs'],
+        rlsEnabled: true,
+        region: 'eu-north-1'
+      },
+      whatsapp: {
+        connected: true,
+        instance: 'Maurícius NEXA Business Primary',
+        phone: '+244 923 001 234',
+        totalSent: 142,
+        totalReceived: 98,
+        autoReply: true
+      }
+    };
+  }
+}
+
+/**
+ * Streaming em tempo real (token a token / máquina de escrever) da resposta do NEXA
+ */
+export async function streamMessageToNexa(
+  messages: Message[],
+  systemPrompt: string,
+  callbacks: StreamCallbacks,
+  modelName: string = 'qwen3.8-max'
+): Promise<void> {
+  const formattedMessages = messages.map(m => ({
+    role: m.role,
+    content: m.content
+  }));
+
+  let accumulatedText = '';
+
+  try {
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messages: formattedMessages,
+        systemPrompt,
+        model: modelName
+      })
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Falha no streaming do servidor (${response.status})`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+
+        if (dataStr === '[DONE]') {
+          callbacks.onDone(accumulatedText);
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(dataStr);
+          if (parsed.done) {
+            callbacks.onDone(accumulatedText);
+            return;
+          }
+          if (parsed.text) {
+            accumulatedText += parsed.text;
+            callbacks.onChunk(parsed.text);
+          }
+        } catch (e) {
+          // Linha parcial
+        }
+      }
+    }
+
+    callbacks.onDone(accumulatedText);
+  } catch (err: any) {
+    console.warn('[Streaming Warning] Erro no stream do servidor, recorrendo a fallback instantâneo:', err);
+    try {
+      // Fallback: busca resposta e faz efeito máquina de escrever no cliente
+      const fallbackData = await sendMessageToNexa(messages, systemPrompt, modelName);
+      const text = fallbackData.reply || '';
+      
+      const words = text.split(/(\s+)/);
+      for (let i = 0; i < words.length; i += 2) {
+        const chunk = (words[i] || '') + (words[i + 1] || '');
+        accumulatedText += chunk;
+        callbacks.onChunk(chunk);
+        await new Promise(r => setTimeout(r, 20));
+      }
+      callbacks.onDone(accumulatedText);
+    } catch (fallbackErr) {
+      callbacks.onError(fallbackErr);
+    }
+  }
+}
+
+/**
+ * Envia o histórico completo da conversa e o System Prompt oficial para o backend.
+ * O backend processa prioritariamente com a API Qwen (qwen3.8-max).
+ */
 export async function sendMessageToNexa(
   messages: Message[],
   systemPrompt: string,

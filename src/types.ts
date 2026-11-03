@@ -37,11 +37,15 @@ export interface WhatsAppContact {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   avatar?: string;
   unreadCount: number;
   lastMessage: string;
   lastMessageTime: string;
   isGroup?: boolean;
+  tags?: string[];
+  notes?: string;
+  status?: 'online' | 'offline' | 'typing';
 }
 
 export interface WhatsAppMessage {
@@ -51,6 +55,25 @@ export interface WhatsAppMessage {
   text: string;
   timestamp: string;
   reaction?: string;
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  isAiGenerated?: boolean;
+}
+
+export interface WhatsAppConfig {
+  connected: boolean;
+  phoneNumber: string;
+  instanceName: string;
+  apiMode: 'cloud_api' | 'qr_bridge';
+  metaPhoneNumberId?: string;
+  metaBusinessAccountId?: string;
+  metaAccessToken?: string;
+  webhookVerifyToken?: string;
+  autoReplyEnabled: boolean;
+  autoReplyPrompt?: string;
+  batteryLevel?: number;
+  lastSync?: string;
+  totalSent?: number;
+  totalReceived?: number;
 }
 
 export interface AppSettings {

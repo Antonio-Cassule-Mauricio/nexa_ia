@@ -92,4 +92,84 @@ CREATE TRIGGER trigger_update_conversation_timestamp
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_updated_at();
 
+-- ==============================================================================
+-- MÓDULO WHATSAPP EMPRESARIAL (NEXA MULTICANAL)
+-- ==============================================================================
+
+-- 8. Tabela de Contactos do WhatsApp (whatsapp_contacts)
+CREATE TABLE IF NOT EXISTS public.whatsapp_contacts (
+    id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    email TEXT,
+    unread_count INT DEFAULT 0,
+    last_message TEXT,
+    last_message_time TEXT,
+    is_group BOOLEAN DEFAULT false,
+    tags TEXT[] DEFAULT '{}',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 9. Tabela de Mensagens do WhatsApp (whatsapp_messages)
+CREATE TABLE IF NOT EXISTS public.whatsapp_messages (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    sender TEXT NOT NULL CHECK (sender IN ('user', 'contact')),
+    text TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    reaction TEXT,
+    status TEXT DEFAULT 'delivered',
+    is_ai_generated BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 10. Tabela de Configuração e Chaves do WhatsApp (whatsapp_configs)
+CREATE TABLE IF NOT EXISTS public.whatsapp_configs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+    phone_number TEXT NOT NULL DEFAULT '+244 923 001 234',
+    instance_name TEXT DEFAULT 'Maurícius NEXA Primary',
+    api_mode TEXT DEFAULT 'cloud_api',
+    meta_phone_number_id TEXT,
+    meta_business_account_id TEXT,
+    meta_access_token TEXT,
+    webhook_verify_token TEXT DEFAULT 'mauricius_nexa_webhook_2026',
+    auto_reply_enabled BOOLEAN DEFAULT true,
+    auto_reply_prompt TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Índices de consulta rápida
+CREATE INDEX IF NOT EXISTS idx_wa_contacts_user_id ON public.whatsapp_contacts(user_id);
+CREATE INDEX IF NOT EXISTS idx_wa_messages_contact_id ON public.whatsapp_messages(contact_id);
+CREATE INDEX IF NOT EXISTS idx_wa_messages_user_id ON public.whatsapp_messages(user_id);
+
+-- Ativação de RLS
+ALTER TABLE public.whatsapp_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.whatsapp_configs ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de RLS para Contactos WhatsApp
+CREATE POLICY "Permitir leitura de contactos ao proprietário"
+    ON public.whatsapp_contacts FOR SELECT USING (auth.uid() = user_id OR auth.uid() IS NULL);
+
+CREATE POLICY "Permitir inserção e edição de contactos ao proprietário"
+    ON public.whatsapp_contacts FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL);
+
+-- Políticas de RLS para Mensagens WhatsApp
+CREATE POLICY "Permitir leitura de mensagens ao proprietário"
+    ON public.whatsapp_messages FOR SELECT USING (auth.uid() = user_id OR auth.uid() IS NULL);
+
+CREATE POLICY "Permitir envio e inserção de mensagens ao proprietário"
+    ON public.whatsapp_messages FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL);
+
+-- Políticas de RLS para Configurações WhatsApp
+CREATE POLICY "Permitir gestão de configurações WhatsApp ao proprietário"
+    ON public.whatsapp_configs FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL);
+
 -- Concluído com sucesso! Cole este script no SQL Editor do painel Supabase.
+

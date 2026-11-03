@@ -41,9 +41,33 @@ import { SettingsModal } from './components/SettingsModal';
 import { MauriciusLandingPage } from './components/MauriciusLandingPage';
 import { NexaLandingPage } from './components/NexaLandingPage';
 import { SupabaseAuthModal } from './components/SupabaseAuthModal';
-import { sendMessageToNexa, checkServerHealth } from './services/api';
-import { supabase } from './services/supabase';
+import { 
+  sendMessageToNexa, 
+  streamMessageToNexa,
+  checkServerHealth 
+} from './services/api';
+import { 
+  supabase, 
+  saveConversationToSupabase, 
+  saveMessageToSupabase, 
+  loadUserConversationsFromSupabase 
+} from './services/supabase';
+import { 
+  sendWhatsAppMessageApi, 
+  syncContactToSupabase 
+} from './services/whatsapp';
 import { Check, Bot, Globe } from 'lucide-react';
+
+/**
+ * Helper para gerar títulos limpos e contextuais a partir da primeira mensagem (estilo ChatGPT)
+ */
+function generateConversationTitle(raw: string): string {
+  const clean = raw.trim().replace(/^["']|["']$/g, '');
+  if (!clean) return 'Nova Conversa';
+  const sentence = clean.split(/[.!?\n]/)[0].trim();
+  const capped = sentence.length > 34 ? sentence.slice(0, 34) + '...' : sentence;
+  return capped.charAt(0).toUpperCase() + capped.slice(1);
+}
 
 export const App: React.FC = () => {
   // Estado de navegação principal da aplicação:
@@ -173,13 +197,41 @@ export const App: React.FC = () => {
   };
 
   // Conversa ativa selecionada
+  // Sincroniza conversas do Supabase quando o utilizador se autentica
+  useEffect(() => {
+    if (currentUser?.id) {
+      loadUserConversationsFromSupabase(currentUser.id).then(cloudConvs => {
+        if (cloudConvs && cloudConvs.length > 0) {
+          setConversations(cloudConvs);
+          setActiveConversationId(cloudConvs[0].id);
+        }
+      });
+    }
+  }, [currentUser?.id]);
+
+  // Conversa ativa selecionada
   const activeConversation = conversations.find(c => c.id === activeConversationId) || conversations[0];
 
   // ============================================================================
-  // PROCESSAMENTO DE MENSAGENS COM O NEXA
+  // PROCESSAMENTO DE MENSAGENS COM O NEXA (ESTILO CHATGPT / ZAPIA)
   // ============================================================================
   const handleSendMessage = async (text: string) => {
-    if (!text.trim() || isThinking || !activeConversation) return;
+    if (!text.trim() || isThinking) return;
+
+    // Se não existir conversa ativa, cria uma nova
+    let targetConv = activeConversation;
+    if (!targetConv) {
+      const newId = `conv-${Date.now()}`;
+      targetConv = {
+        id: newId,
+        title: generateConversationTitle(text),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        systemPrompt: settings.systemPrompt,
+        messages: []
+      };
+      setActiveConversationId(newId);
+    }
 
     // 1. Cria a mensagem do utilizador
     const userMessage: Message = {
@@ -189,91 +241,139 @@ export const App: React.FC = () => {
       timestamp: new Date().toISOString()
     };
 
-    const updatedMessages = [...activeConversation.messages, userMessage];
+    const updatedMessages = [...targetConv.messages, userMessage];
 
-    // Atualiza o título da conversa se for a primeira mensagem
-    let newTitle = activeConversation.title;
-    if (activeConversation.messages.length <= 1) {
-      newTitle = text.slice(0, 32) + (text.length > 32 ? '...' : '');
+    // Calcula título dinâmico para o histórico (como o ChatGPT):
+    // Se for a primeira mensagem enviada pelo utilizador ou título inicial/genérico
+    const userMessageCount = targetConv.messages.filter(m => m.role === 'user').length;
+    let newTitle = targetConv.title;
+    if (
+      userMessageCount === 0 || 
+      targetConv.title === 'Nova Conversa' || 
+      targetConv.title.startsWith('Conversa ') ||
+      targetConv.title === 'Alinhamento Estratégico NEXA'
+    ) {
+      newTitle = generateConversationTitle(text);
     }
 
-    setConversations(prev =>
-      prev.map(c =>
-        c.id === activeConversation.id
-          ? { ...c, title: newTitle, messages: updatedMessages, updatedAt: new Date().toISOString() }
-          : c
-      )
-    );
+    // Cria o marcador da resposta do assistente NEXA (começa vazio e preenche via stream)
+    const assistantMessageId = `msg-nexa-${Date.now()}`;
+    const initialAssistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      reactions: ['✨', '🤖']
+    };
+
+    const targetConvId = targetConv.id;
+    const conversationWithAssistant: Conversation = {
+      ...targetConv,
+      title: newTitle,
+      messages: [...updatedMessages, initialAssistantMessage],
+      updatedAt: new Date().toISOString()
+    };
+
+    // Mover a conversa atualizada para o TOPO da lista no histórico
+    setConversations(prev => {
+      const remaining = prev.filter(c => c.id !== targetConvId);
+      return [conversationWithAssistant, ...remaining];
+    });
+
+    // Guardar no Supabase se utilizador estiver autenticado
+    if (currentUser?.id) {
+      saveConversationToSupabase(conversationWithAssistant, currentUser.id);
+      saveMessageToSupabase(userMessage, targetConvId, currentUser.id);
+    }
 
     setIsThinking(true);
+    let streamedFullText = '';
 
     try {
-      // 2. Envia para o backend (Qwen 3.8 Max)
-      const response = await sendMessageToNexa(
+      await streamMessageToNexa(
         updatedMessages,
         settings.systemPrompt,
+        {
+          onChunk: (chunk: string) => {
+            streamedFullText += chunk;
+            setConversations(prev => prev.map(c => {
+              if (c.id !== targetConvId) return c;
+              return {
+                ...c,
+                title: newTitle,
+                updatedAt: new Date().toISOString(),
+                messages: c.messages.map(m => 
+                  m.id === assistantMessageId ? { ...m, content: streamedFullText } : m
+                )
+              };
+            }));
+          },
+          onDone: (finalText: string) => {
+            setIsThinking(false);
+            const completedMessage: Message = {
+              id: assistantMessageId,
+              role: 'assistant',
+              content: finalText || streamedFullText,
+              timestamp: new Date().toISOString(),
+              reactions: ['✨', '🤖']
+            };
+
+            // Salvar mensagem completa do assistente no Supabase
+            if (currentUser?.id) {
+              saveMessageToSupabase(completedMessage, targetConvId, currentUser.id);
+            }
+          },
+          onError: (err: any) => {
+            console.error('Falha no streaming do assistente:', err);
+            setIsThinking(false);
+            setConversations(prev => prev.map(c => {
+              if (c.id !== targetConvId) return c;
+              return {
+                ...c,
+                messages: c.messages.map(m => 
+                  m.id === assistantMessageId ? {
+                    ...m,
+                    content: 'Ocorreu um erro temporário na ligação ao motor Qwen. Por favor tenta enviar novamente.'
+                  } : m
+                )
+              };
+            }));
+          }
+        },
         settings.modelName
       );
-
-      // 3. Adiciona a resposta do assistente ao feed
-      const assistantMessage: Message = {
-        id: `msg-nexa-${Date.now()}`,
-        role: 'assistant',
-        content: response.reply,
-        timestamp: new Date().toISOString(),
-        reactions: ['✨', '🤖']
-      };
-
-      setConversations(prev =>
-        prev.map(c =>
-          c.id === activeConversation.id
-            ? { ...c, messages: [...updatedMessages, assistantMessage], updatedAt: new Date().toISOString() }
-            : c
-        )
-      );
-    } catch (err) {
-      console.error('Falha na resposta do assistente:', err);
-      const errorMessage: Message = {
-        id: `msg-err-${Date.now()}`,
-        role: 'assistant',
-        content: 'Ocorreu um erro ao processar a resposta com o motor Qwen. Por favor, tenta novamente.',
-        timestamp: new Date().toISOString()
-      };
-      setConversations(prev =>
-        prev.map(c =>
-          c.id === activeConversation.id
-            ? { ...c, messages: [...updatedMessages, errorMessage] }
-            : c
-        )
-      );
-    } finally {
+    } catch (streamErr) {
+      console.error('Erro na execução do stream:', streamErr);
       setIsThinking(false);
     }
   };
 
   // ============================================================================
-  // GESTÃO DE CONVERSAS (HISTÓRICO)
+  // GESTÃO DE CONVERSAS (HISTÓRICO ESTILO CHATGPT)
   // ============================================================================
   const handleNewConversation = () => {
+    const newId = `conv-${Date.now()}`;
     const newConv: Conversation = {
-      id: `conv-${Date.now()}`,
-      title: `Conversa ${conversations.length + 1}`,
+      id: newId,
+      title: 'Nova Conversa',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       systemPrompt: settings.systemPrompt,
       messages: [
         {
-          id: `msg-init-${Date.now()}`,
+          id: `msg-welcome-${Date.now()}`,
           role: 'assistant',
-          content: 'Olá! Sou o NEXA, assistente pessoal de elite da Maurícius. Como posso ser útil hoje?',
+          content: 'Olá! Sou o **NEXA**, assistente pessoal de elite da **Maurícius**.\n\nComo posso ser útil hoje? Experimenta enviar uma pergunta, organizar tarefas ou preparar uma mensagem para o WhatsApp.',
           timestamp: new Date().toISOString()
         }
       ]
     };
 
-    setConversations(prev => [newConv, ...prev]);
-    setActiveConversationId(newConv.id);
+    // Adiciona ao topo da lista de conversas
+    setConversations(prev => [newConv, ...prev.filter(c => c.id !== newId)]);
+    setActiveConversationId(newId);
     setCurrentTab('chat');
+    showToast('Nova conversa pronta');
   };
 
   const handleDeleteConversation = (id: string) => {
@@ -372,16 +472,22 @@ export const App: React.FC = () => {
     handleSendMessage('NEXA, atua como meu gestor de produtividade na Maurícius e sugere um plano estruturado de 3 tarefas cruciais para hoje.');
   };
 
-  // Operações do WhatsApp Hub
-  const handleSendWhatsAppMessage = (contactId: string, text: string) => {
+  // Operações do WhatsApp Hub (Mercado Real & NEXA Multicanal)
+  const handleSendWhatsAppMessage = async (contactId: string, text: string) => {
+    const contact = whatsappContacts.find(c => c.id === contactId);
+    const newMsgId = `wam-${Date.now()}`;
+    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const newMsg: WhatsAppMessage = {
-      id: `wam-${Date.now()}`,
+      id: newMsgId,
       contactId,
       sender: 'user',
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: timeNow,
+      status: 'sending'
     };
 
+    // Atualização otimista imediata na interface
     setWhatsappMessages(prev => ({
       ...prev,
       [contactId]: [...(prev[contactId] || []), newMsg]
@@ -394,7 +500,125 @@ export const App: React.FC = () => {
           : c
       )
     );
+
+    // Despacho real pelo backend Express (/api/whatsapp/send)
+    try {
+      const sendResult = await sendWhatsAppMessageApi(
+        contact?.phone || '+244 923 000 000',
+        contact?.name || 'Cliente',
+        text
+      );
+
+      // Atualiza o estado da mensagem para entregue
+      setWhatsappMessages(prev => ({
+        ...prev,
+        [contactId]: (prev[contactId] || []).map(m =>
+          m.id === newMsgId ? { ...m, status: sendResult.status } : m
+        )
+      }));
+    } catch (err) {
+      console.warn('Aviso no envio WhatsApp:', err);
+    }
   };
+
+  // Adicionar novo contacto real (Angola, Portugal, Brasil, etc.)
+  const handleAddWhatsAppContact = (newContact: WhatsAppContact) => {
+    setWhatsappContacts(prev => [newContact, ...prev]);
+    setWhatsappMessages(prev => ({
+      ...prev,
+      [newContact.id]: []
+    }));
+    syncContactToSupabase(newContact, currentUser?.id);
+    showToast(`Contacto ${newContact.name} adicionado com sucesso!`);
+  };
+
+  // Remover contacto
+  const handleDeleteWhatsAppContact = (contactId: string) => {
+    setWhatsappContacts(prev => prev.filter(c => c.id !== contactId));
+    setWhatsappMessages(prev => {
+      const copy = { ...prev };
+      delete copy[contactId];
+      return copy;
+    });
+    showToast('Contacto removido.');
+  };
+
+  // Receber mensagem de cliente (Simulação ou Webhook real)
+  const handleReceiveIncomingWhatsAppMessage = (
+    fromPhone: string,
+    fromName: string,
+    text: string,
+    aiReply?: string
+  ) => {
+    // Verificar se já existe contacto com este telefone
+    let contact = whatsappContacts.find(c => c.phone.replace(/\D/g, '') === fromPhone.replace(/\D/g, ''));
+    let contactId = contact?.id;
+
+    if (!contact) {
+      contactId = `wa-client-${Date.now()}`;
+      const newContact: WhatsAppContact = {
+        id: contactId,
+        name: fromName,
+        phone: fromPhone,
+        unreadCount: 1,
+        lastMessage: text,
+        lastMessageTime: 'Agora',
+        tags: ['Cliente', 'Entrada Webhook'],
+        status: 'online'
+      };
+      setWhatsappContacts(prev => [newContact, ...prev]);
+      contact = newContact;
+    } else {
+      setWhatsappContacts(prev =>
+        prev.map(c =>
+          c.id === contactId
+            ? {
+                ...c,
+                lastMessage: aiReply || text,
+                lastMessageTime: 'Agora',
+                unreadCount: c.unreadCount + 1
+              }
+            : c
+        )
+      );
+    }
+
+    const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Mensagem recebida do cliente
+    const incomingMsg: WhatsAppMessage = {
+      id: `wam-in-${Date.now()}`,
+      contactId: contactId!,
+      sender: 'contact',
+      text,
+      timestamp: timeNow,
+      status: 'read'
+    };
+
+    const newMessages = [incomingMsg];
+
+    // Se a IA NEXA gerou uma auto-resposta
+    if (aiReply) {
+      const aiMsg: WhatsAppMessage = {
+        id: `wam-ai-${Date.now() + 1}`,
+        contactId: contactId!,
+        sender: 'user',
+        text: aiReply,
+        timestamp: timeNow,
+        status: 'delivered',
+        isAiGenerated: true
+      };
+      newMessages.push(aiMsg);
+    }
+
+    setWhatsappMessages(prev => ({
+      ...prev,
+      [contactId!]: [...(prev[contactId!] || []), ...newMessages]
+    }));
+
+    showToast(aiReply ? 'Nova mensagem respondida pelo NEXA!' : 'Nova mensagem recebida no WhatsApp');
+  };
+
 
   const handleAddWhatsAppReaction = (contactId: string, messageId: string, emoji: string) => {
     setWhatsappMessages(prev => ({
@@ -552,6 +776,7 @@ export const App: React.FC = () => {
             onToggleMobileSidebar={() => setIsMobileSidebarOpen(true)}
             activeModelName={serverStatus.engine}
             onGoToNexaSite={() => setViewMode('nexa')}
+            onNewConversation={handleNewConversation}
           />
         )}
 
@@ -576,6 +801,9 @@ export const App: React.FC = () => {
             onExtractTasksFromThreadWithNexa={handleExtractTasksFromThreadWithNexa}
             onSuggestReplyWithNexa={handleSuggestReplyWithNexa}
             onToggleMobileSidebar={() => setIsMobileSidebarOpen(true)}
+            onAddContact={handleAddWhatsAppContact}
+            onDeleteContact={handleDeleteWhatsAppContact}
+            onReceiveIncomingMessage={handleReceiveIncomingWhatsAppMessage}
           />
         )}
       </main>

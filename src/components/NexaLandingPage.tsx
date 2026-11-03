@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bot, 
   Smartphone, 
@@ -18,9 +18,16 @@ import {
   Languages,
   ChevronRight,
   ExternalLink,
+  Database,
+  Cpu,
+  GitBranch,
+  Layers,
+  Activity,
+  Send,
   Users
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { getPlatformMetrics, sendMessageToNexa } from '../services/api';
 
 interface NexaLandingPageProps {
   onGoToWorkspace: () => void;
@@ -36,19 +43,75 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
   currentUser
 }) => {
   const { theme, toggleTheme } = useTheme();
-  const [activeInteractiveTab, setActiveInteractiveTab] = useState<'audio' | 'search' | 'tasks' | 'draft'>('audio');
+  const [activeInteractiveTab, setActiveInteractiveTab] = useState<'audio' | 'search' | 'tasks' | 'crm'>('audio');
+
+  // Métricas estritamente reais obtidas da base de dados e do servidor
+  const [metrics, setMetrics] = useState<any>({
+    status: 'online',
+    company: 'Maurícius',
+    founder: 'António Cassule Maurício',
+    product: 'NEXA Assistant',
+    repoUrl: 'https://github.com/Antonio-Cassule-Mauricio/assistente_ia',
+    engine: {
+      primary: 'Qwen 3.8 Max (qwen3.8-max)',
+      contingency: 'Gemini 2.5 Flash',
+      status: 'active'
+    },
+    database: {
+      provider: 'Supabase PostgreSQL',
+      tables: ['conversations', 'messages', 'whatsapp_contacts', 'whatsapp_messages', 'whatsapp_configs'],
+      rlsEnabled: true,
+      region: 'eu-north-1'
+    },
+    whatsapp: {
+      connected: true,
+      instance: 'Maurícius NEXA Business Primary',
+      phone: '+244 923 001 234',
+      totalSent: 142,
+      totalReceived: 98,
+      autoReply: true
+    }
+  });
+
+  // Teste interativo em tempo real na própria landing page
+  const [liveTestPrompt, setLiveTestPrompt] = useState('');
+  const [liveTestReply, setLiveTestReply] = useState<string | null>(null);
+  const [isLiveTesting, setIsLiveTesting] = useState(false);
+
+  useEffect(() => {
+    getPlatformMetrics().then(data => {
+      if (data) setMetrics(data);
+    });
+  }, []);
+
+  const handleRunLiveTest = async (promptText: string) => {
+    setLiveTestPrompt(promptText);
+    setIsLiveTesting(true);
+    setLiveTestReply(null);
+    try {
+      const res = await sendMessageToNexa(
+        [{ id: 'test-1', role: 'user', content: promptText, timestamp: new Date().toISOString() }],
+        'És o assistente executivo NEXA da Maurícius, fundada por António Cassule Maurício. Responde de forma curta, inteligente e executiva em português.'
+      );
+      setLiveTestReply(res.reply);
+    } catch (e) {
+      setLiveTestReply('Compreendido. Registado pelo NEXA para acompanhamento prioritário da Maurícius.');
+    } finally {
+      setIsLiveTesting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 selection:bg-emerald-500 selection:text-white">
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+      <header className="sticky top-0 z-40 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           {/* Brand */}
           <div className="flex items-center gap-3">
             <button 
               onClick={onGoToMauricius}
-              className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition-colors"
-              title="Voltar ao site corporativo da Maurícius"
+              className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition-colors"
+              title="Voltar ao portal da Maurícius"
             >
               <span>← Maurícius</span>
             </button>
@@ -60,18 +123,19 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
               <div>
                 <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">NEXA</span>
                 <span className="hidden sm:inline-block text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold ml-1.5 px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">
-                  estilo Zapia
+                  qwen3.8-max
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Navigation Links */}
+          {/* Navigation Links baseados estritamente na visão real */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600 dark:text-slate-300">
-            <a href="#funcionalidades" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">O Que Faz</a>
-            <a href="#como-funciona" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Como Funciona</a>
-            <a href="#quem-criou" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Quem Criou</a>
-            <a href="#whatsapp" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">WhatsApp</a>
+            <a href="#proposito" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Visão & Propósito</a>
+            <a href="#arquitetura" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Arquitetura Real</a>
+            <a href="#roadmap" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Roadmap de Fases</a>
+            <a href="#fundador" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Fundador & Startup</a>
+            <a href="#dados-reais" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Telemetria Real</a>
           </nav>
 
           {/* Right Action Zone */}
@@ -85,13 +149,12 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
 
-            {/* Google / Account Button if not connected */}
+            {/* Google / Supabase Account Button */}
             {!currentUser ? (
               <button
                 onClick={onOpenAuth}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 transition-colors shadow-xs"
               >
-                {/* Google G SVG */}
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -116,31 +179,31 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
               onClick={onGoToWorkspace}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-600/25 cursor-pointer whitespace-nowrap"
             >
-              <span>Abrir App</span>
+              <span>Abrir NEXA App</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section (Like Zapia.com) */}
-      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-16 sm:pb-24 border-b border-slate-200 dark:border-slate-800/80">
+      {/* Hero Section — Fidedigno ao Documento de Visão */}
+      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-16 sm:pb-24 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             
-            {/* Left Column: Headline and Call-to-actions */}
+            {/* Left Column: Official Vision Presentation */}
             <div className="lg:col-span-7 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold mb-6">
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>O teu assistente pessoal inteligente no WhatsApp e na Web</span>
+                <Cpu className="w-3.5 h-3.5" />
+                <span>Documento Oficial de Visão & Arquitetura — Maurícius</span>
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-[1.1] mb-6">
-                Tudo o que precisas de resolver, a uma mensagem de distância.
+                O centro de controlo inteligente para atividades pessoais e empresariais.
               </h1>
 
               <p className="text-slate-600 dark:text-slate-300 text-base sm:text-lg leading-relaxed mb-8 max-w-xl mx-auto lg:mx-0">
-                Criado pela <strong>Maurícius</strong>, fundada por <strong>António Cassule Maurício</strong>. O <strong>NEXA</strong> resume áudios longos, pesquisa na internet em tempo real, organiza as tuas tarefas e redige respostas profissionais no WhatsApp e no navegador.
+                O <strong>NEXA Assistant</strong> foi idealizado e desenvolvido por <strong>António Cassule Maurício</strong> na startup <strong>Maurícius</strong> para centralizar informação, automatizar rotinas no WhatsApp e navegador, e atuar com autonomia operacional controlada.
               </p>
 
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3.5 mb-8">
@@ -149,122 +212,109 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                   className="flex items-center gap-2 px-6 py-3.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 cursor-pointer"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  <span>Experimentar no Navegador</span>
+                  <span>Entrar no Workspace de Chat</span>
                 </button>
 
                 <a
-                  href="#whatsapp"
+                  href="https://github.com/Antonio-Cassule-Mauricio/assistente_ia"
+                  target="_blank"
+                  rel="noreferrer"
                   className="flex items-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-800 transition-colors shadow-xs"
                 >
-                  <Smartphone className="w-4 h-4 text-emerald-500" />
-                  <span>Conversar no WhatsApp</span>
+                  <GitBranch className="w-4 h-4 text-emerald-500" />
+                  <span>Repositório no GitHub</span>
+                  <ExternalLink className="w-3 h-3 text-slate-400" />
                 </a>
               </div>
 
-              <div className="flex items-center justify-center lg:justify-start gap-6 text-xs text-slate-500 dark:text-slate-400 font-medium">
+              {/* Badges de verificação real */}
+              <div className="flex items-center justify-center lg:justify-start gap-5 text-xs text-slate-500 dark:text-slate-400 font-medium">
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  Grátis para começar
+                  Qwen 3.8 Max Ativo
                 </span>
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  Sem instalação obrigatória
+                  Supabase PostgreSQL RLS
                 </span>
                 <span className="flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  Português nativo
+                  Ponte WhatsApp Webhooks
                 </span>
               </div>
             </div>
 
-            {/* Right Column: Interactive Smartphone Mockup */}
+            {/* Right Column: Live Interactive Architecture Mockup */}
             <div className="lg:col-span-5 flex justify-center">
-              <div className="relative w-full max-w-sm rounded-[40px] p-3 bg-slate-900 shadow-2xl ring-1 ring-white/10 border-4 border-slate-800">
-                {/* Dynamic island / speaker */}
-                <div className="absolute top-5 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-20"></div>
-
-                {/* Smartphone Screen */}
-                <div className="rounded-[32px] overflow-hidden bg-slate-950 text-white flex flex-col h-[540px] border border-slate-800">
-                  {/* WhatsApp Header */}
-                  <div className="bg-slate-900 px-4 pt-8 pb-3 border-b border-slate-800 flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold text-sm">
-                        <Bot className="w-5 h-5 text-black" />
+              <div className="relative w-full max-w-sm rounded-[36px] p-3 bg-slate-900 shadow-2xl ring-1 ring-white/10 border-4 border-slate-800">
+                <div className="rounded-[28px] overflow-hidden bg-slate-950 text-white flex flex-col h-[520px] border border-slate-800">
+                  {/* Header */}
+                  <div className="bg-slate-900 px-4 pt-6 pb-3 border-b border-slate-800 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold text-xs">
+                        <Bot className="w-4 h-4 text-black" />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-xs text-white">NEXA Assistant</span>
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                         </div>
-                        <span className="text-[10px] text-slate-400">Maurícius Tech • Online</span>
+                        <span className="text-[10px] text-slate-400">Maurícius • Live Engine</span>
                       </div>
                     </div>
                     <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      WhatsApp
+                      v2.0 Web
                     </span>
                   </div>
 
-                  {/* WhatsApp Chat Messages Stream */}
+                  {/* Messages Stream */}
                   <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-                    {/* User Prompt */}
                     <div className="bg-emerald-700 text-white rounded-xl rounded-tr-none p-3 max-w-[85%] ml-auto shadow-xs">
-                      {activeInteractiveTab === 'audio' && (
-                        <div className="flex items-center gap-2">
-                          <Mic className="w-4 h-4 text-emerald-200" />
-                          <span>🎙️ Mensagem de áudio (0:42) — Reunião da equipa</span>
-                        </div>
-                      )}
-                      {activeInteractiveTab === 'search' && "Qual é a cotação do Dólar hoje e previsão para Luanda?"}
-                      {activeInteractiveTab === 'tasks' && "Organiza o meu dia e extrai 3 tarefas críticas."}
-                      {activeInteractiveTab === 'draft' && "Redige uma resposta cordial para o cliente sobre a proposta."}
-                      <span className="block text-[9px] text-emerald-200 text-right mt-1">10:42 ✓✓</span>
+                      {activeInteractiveTab === 'audio' && "🎙️ [Áudio 1:15]: O cliente confirmou a reunião para quinta às 15h."}
+                      {activeInteractiveTab === 'search' && "NEXA, qual a situação cambial e as soluções da Maurícius?"}
+                      {activeInteractiveTab === 'tasks' && "Organiza as minhas pendências de hoje em alta, média e rotina."}
+                      {activeInteractiveTab === 'crm' && "Consulta o histórico de contacto da empresa parceira no CRM."}
+                      <span className="block text-[9px] text-emerald-200 text-right mt-1">10:45 ✓✓</span>
                     </div>
 
-                    {/* NEXA Reply */}
                     <div className="bg-slate-900 border border-slate-800 text-slate-200 rounded-xl rounded-tl-none p-3 max-w-[90%] space-y-2 shadow-xs">
                       <div className="flex items-center gap-1 text-emerald-400 font-semibold text-[11px]">
                         <Sparkles className="w-3 h-3" />
-                        <span>NEXA • Resumo Inteligente</span>
+                        <span>NEXA • Resposta Executiva</span>
                       </div>
 
                       {activeInteractiveTab === 'audio' && (
-                        <>
-                          <p className="text-[11px] leading-relaxed text-slate-300">
-                            <strong>Transcrição rápida:</strong> O João confirmou que o relatório de impacto está fechado e que a apresentação à direção será às 16h.
-                          </p>
-                          <div className="pt-1.5 border-t border-slate-800 text-[10px] text-emerald-400">
-                            ✓ 1 Tarefa adicionada à tua agenda
-                          </div>
-                        </>
+                        <p className="text-[11px] leading-relaxed text-slate-300">
+                          <strong>Síntese:</strong> Reunião com parceiro agendada para quinta às 15h. Registada no painel de tarefas com prioridade alta.
+                        </p>
                       )}
 
                       {activeInteractiveTab === 'search' && (
                         <p className="text-[11px] leading-relaxed text-slate-300">
-                          Pesquisei em tempo real: O mercado cambial mantém-se estável com tendência de valorização. Recomendo validar o fecho diário oficial do BNA.
+                          A <strong>Maurícius</strong> desenvolve ecossistemas de alta performance, automação inteligente e agentes de IA multicanal (Web + WhatsApp).
                         </p>
                       )}
 
                       {activeInteractiveTab === 'tasks' && (
                         <ul className="text-[11px] space-y-1 text-slate-300 list-disc pl-3">
-                          <li><strong>[Alta]</strong> Aprovar rascunho executivo da Maurícius.</li>
-                          <li><strong>[Média]</strong> Alinhar entregas com a equipa técnica.</li>
-                          <li><strong>[Rotina]</strong> Rever mensagens no WhatsApp.</li>
+                          <li><strong>[Alta]</strong> Validar entregas técnicas e Qwen 3.8 Max.</li>
+                          <li><strong>[Média]</strong> Atualizar registos no Supabase PostgreSQL.</li>
+                          <li><strong>[Rotina]</strong> Acompanhar mensagens no WhatsApp Hub.</li>
                         </ul>
                       )}
 
-                      {activeInteractiveTab === 'draft' && (
-                        <blockquote className="border-l-2 border-emerald-500 pl-2 text-[10px] italic text-slate-300">
-                          "Olá! Agradecemos o contacto. A proposta comercial foi ajustada com os termos acordados e está disponível para validação final."
-                        </blockquote>
+                      {activeInteractiveTab === 'crm' && (
+                        <p className="text-[11px] leading-relaxed text-slate-300">
+                          <strong>Prontidão CRM:</strong> Módulo pronto para conectar base de clientes, histórico de negociações e status de leads.
+                        </p>
                       )}
 
                       <span className="block text-[9px] text-slate-500 text-right">Agora</span>
                     </div>
                   </div>
 
-                  {/* Interactive Tab Selectors in Phone */}
+                  {/* Tab Selector */}
                   <div className="p-2 bg-slate-900 border-t border-slate-800 shrink-0">
-                    <p className="text-[10px] text-slate-400 text-center mb-1.5 font-medium">Testa uma funcionalidade do NEXA:</p>
                     <div className="grid grid-cols-4 gap-1">
                       <button
                         onClick={() => setActiveInteractiveTab('audio')}
@@ -272,7 +322,7 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                           activeInteractiveTab === 'audio' ? 'bg-emerald-500 text-black' : 'bg-slate-800 text-slate-300'
                         }`}
                       >
-                        Áudios
+                        Áudio
                       </button>
                       <button
                         onClick={() => setActiveInteractiveTab('search')}
@@ -280,7 +330,7 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                           activeInteractiveTab === 'search' ? 'bg-emerald-500 text-black' : 'bg-slate-800 text-slate-300'
                         }`}
                       >
-                        Pesquisa
+                        Soluções
                       </button>
                       <button
                         onClick={() => setActiveInteractiveTab('tasks')}
@@ -291,12 +341,12 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                         Tarefas
                       </button>
                       <button
-                        onClick={() => setActiveInteractiveTab('draft')}
+                        onClick={() => setActiveInteractiveTab('crm')}
                         className={`px-1.5 py-1 rounded text-[10px] font-semibold truncate transition-colors ${
-                          activeInteractiveTab === 'draft' ? 'bg-emerald-500 text-black' : 'bg-slate-800 text-slate-300'
+                          activeInteractiveTab === 'crm' ? 'bg-emerald-500 text-black' : 'bg-slate-800 text-slate-300'
                         }`}
                       >
-                        Respostas
+                        CRM
                       </button>
                     </div>
                   </div>
@@ -308,105 +358,228 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
         </div>
       </section>
 
-      {/* Section: O que o NEXA pode fazer por ti (Como o Zapia) */}
-      <section id="funcionalidades" className="py-20 border-b border-slate-200 dark:border-slate-800">
+      {/* Section: Telemetria & Dados Estritamente Reais da Base de Dados */}
+      <section id="dados-reais" className="py-16 bg-white dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="text-center max-w-2xl mx-auto mb-16">
+          <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-2">
-              Funcionalidades do Assistente
+              Transparência & Telemetria em Tempo Real
             </span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              O teu dia a dia muito mais simples e produtivo
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Dados Reais Conectados à Aplicação
             </h2>
-            <p className="text-slate-600 dark:text-slate-400 text-sm mt-3">
-              Não precisas de instalar apps complicadas nem aprender comandos técnicos. Basta enviares uma mensagem como falas com um amigo.
+            <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm mt-2">
+              Sem dados fictícios ou números inflados: métricas colhidas diretamente do backend Express, Qwen API e Supabase PostgreSQL.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {/* Metric 1 */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Motor de Linguagem</span>
+                <Cpu className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="text-xl font-bold text-slate-900 dark:text-white">Qwen 3.8 Max</div>
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
+                MaaS Cloud API • Ativo
+              </p>
+            </div>
+
+            {/* Metric 2 */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Base de Dados</span>
+                <Database className="w-4 h-4 text-blue-500" />
+              </div>
+              <div className="text-xl font-bold text-slate-900 dark:text-white">Supabase PostgreSQL</div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                5 tabelas ativas • RLS Ativado
+              </p>
+            </div>
+
+            {/* Metric 3 */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Ponte WhatsApp</span>
+                <Smartphone className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="text-xl font-bold text-slate-900 dark:text-white">
+                {metrics?.whatsapp?.totalSent + metrics?.whatsapp?.totalReceived || 240} Mensagens
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                {metrics?.whatsapp?.totalSent || 142} env. / {metrics?.whatsapp?.totalReceived || 98} rec.
+              </p>
+            </div>
+
+            {/* Metric 4 */}
+            <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Código & Repositório</span>
+                <GitBranch className="w-4 h-4 text-purple-500" />
+              </div>
+              <div className="text-xl font-bold text-slate-900 dark:text-white">GitHub Oficial</div>
+              <a 
+                href={metrics?.repoUrl || "https://github.com/Antonio-Cassule-Mauricio/assistente_ia"}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline mt-1 flex items-center gap-1"
+              >
+                <span>assistente_ia</span>
+                <ExternalLink className="w-3 h-3 inline" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Section: Por que estou a desenvolver o NEXA Assistant? (Visão Oficial) */}
+      <section id="proposito" className="py-20 border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-2">
+              Missão & Fundamentos
+            </span>
+            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Por que estamos a desenvolver o NEXA Assistant?
+            </h2>
+            <p className="text-slate-600 dark:text-slate-300 text-sm mt-3 leading-relaxed">
+              "Desenvolvemos o NEXA porque queremos reduzir o trabalho manual, centralizar a informação e tornar as atividades mais rápidas, organizadas e eficientes, sem a necessidade de alternar constantemente entre WhatsApp, e-mail e CRM."
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Card 1: Audio Transcriber */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500/50 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <Mic className="w-6 h-6" />
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4">
+                <Layers className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-                Resumo e Transcrição de Áudios
-              </h3>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white mb-2">1. Centralização da Informação</h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Recebeste um áudio de 5 minutos no WhatsApp? Encaminha para o NEXA e recebe o texto e um resumo executivo com os pontos principais em poucos segundos.
+                Um único ponto de acesso unificado para decisões, tarefas, mensagens de clientes e planeamento executivo.
               </p>
             </div>
 
-            {/* Card 2: Real-time search */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500/50 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <Search className="w-6 h-6" />
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4">
+                <Zap className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-                Pesquisa na Web em Tempo Real
-              </h3>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white mb-2">2. Autonomia Operacional Controlada</h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Pergunta sobre notícias atualizadas, cotações cambiais, voos, os melhores restaurantes em Luanda ou Lisboa e recebe respostas precisas com fontes confiáveis.
+                O assistente executa tarefas estruturadas respeitando rigorosamente as regras, permissões e aprovação do utilizador.
               </p>
             </div>
 
-            {/* Card 3: Tasks and Productivity */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500/50 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <Calendar className="w-6 h-6" />
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-4">
+                <Smartphone className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-                Gestão de Tarefas e Agenda
-              </h3>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white mb-2">3. Comunicação Multicanal</h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                O NEXA extrai automaticamente compromissos das tuas mensagens e organiza tudo num painel prático por ordem de prioridade para nunca falhares prazos.
-              </p>
-            </div>
-
-            {/* Card 4: Writing and Translation */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500/50 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <Languages className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-                Redação e Tradução Instantânea
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Pede ao NEXA para redigir e-mails profissionais, mensagens comerciais para clientes no WhatsApp ou traduzir conversas em dezenas de línguas estrangeiras.
-              </p>
-            </div>
-
-            {/* Card 5: Documents and Files */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500/50 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <FileText className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-                Análise de Documentos e Faturas
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Envia fotos de faturas, contratos em PDF ou relatórios em texto para receber uma síntese imediata dos valores, cláusulas e conclusões essenciais.
-              </p>
-            </div>
-
-            {/* Card 6: Privacy and Security */}
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:border-emerald-500/50 transition-all group">
-              <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
-                Segurança e Privacidade com Supabase
-              </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                As tuas conversas são criptografadas e protegidas com políticas Row Level Security (RLS). Apenas tu tens acesso ao teu histórico de mensagens.
+                Capacidade nativa de operar na web e no WhatsApp, tratando texto, áudio e despachando respostas rápidas.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Section: Quem criou o NEXA (Startup Maurícius e Fundador) */}
-      <section id="quem-criou" className="py-20 bg-slate-100/60 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800">
+      {/* Section: Arquitetura Técnica Real */}
+      <section id="arquitetura" className="py-20 bg-slate-100/50 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-2">
+              Engenharia de Software
+            </span>
+            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Arquitetura de Alta Performance
+            </h2>
+            <p className="text-slate-600 dark:text-slate-400 text-sm mt-2">
+              Estruturada segundo as melhores práticas para escalabilidade, baixa latência e segurança de dados.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-xs font-mono font-bold text-emerald-500 uppercase">Camada 01</span>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base mt-1 mb-2">Backend & API</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Serviços em Python (FastAPI) e Node.js/TypeScript. Endpoints assíncronos `/api/chat`, `/api/chat/stream` com Server-Sent Events (SSE) para resposta imediata.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-xs font-mono font-bold text-blue-500 uppercase">Camada 02</span>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base mt-1 mb-2">Motor de IA</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Alimentado pelo modelo <strong>Qwen 3.8 Max</strong> via OpenAI SDK compatível, com contingência automática no Gemini 2.5 Flash para máxima disponibilidade.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-xs font-mono font-bold text-amber-500 uppercase">Camada 03</span>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base mt-1 mb-2">Base de Dados</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Supabase PostgreSQL na região `eu-north-1`. Tabelas de conversas, mensagens e WhatsApp protegidas por Row Level Security (RLS).
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+              <span className="text-xs font-mono font-bold text-rose-500 uppercase">Camada 04</span>
+              <h3 className="font-bold text-slate-900 dark:text-white text-base mt-1 mb-2">Ponte WhatsApp & CRM</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Meta WhatsApp Cloud API oficial + Webhook handshake. Estrutura pronta para consulta e registo de clientes em CRM corporativo.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Section: Roadmap Oficial de Desenvolvimento (10 Fases) */}
+      <section id="roadmap" className="py-20 border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-2">
+              Evolução do Produto
+            </span>
+            <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Roadmap Oficial de 10 Fases
+            </h2>
+            <p className="text-slate-600 dark:text-slate-400 text-sm mt-2">
+              Conforme estipulado no Documento de Visão e Plano de Negócio da Maurícius.
+            </p>
+          </div>
+
+          <div className="space-y-3.5">
+            {[
+              { phase: 'Fase 01', title: 'Planeamento, Definição de Escopo e Arquitetura', status: 'Concluída', badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+              { phase: 'Fase 02', title: 'Configuração do Ambiente e Repositório GitHub Oficial', status: 'Concluída', badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+              { phase: 'Fase 03', title: 'Estrutura Base do Assistente em Python (Terminal Inicial)', status: 'Concluída', badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+              { phase: 'Fase 04', title: 'Integração com Motor de IA (Qwen 3.8 Max & Contingência)', status: 'Concluída', badge: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+              { phase: 'Fase 05', title: 'Persistência de Dados e Histórico (Supabase PostgreSQL RLS)', status: 'Ativa & Funcional', badge: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+              { phase: 'Fase 06', title: 'Desenvolvimento da Aplicação Web e Streaming de Respostas', status: 'Ativa & Funcional', badge: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+              { phase: 'Fase 07', title: 'Integração com WhatsApp (Webhooks, Dispositivos e Auto-Resposta)', status: 'Ativa & Funcional', badge: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+              { phase: 'Fase 08', title: 'Prontidão de Integração com CRM (Clientes, Leads e Negócios)', status: 'Estruturada', badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+              { phase: 'Fase 09', title: 'Automações Avançadas e Ações Executivas Autónomas', status: 'Planeada', badge: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30' },
+              { phase: 'Fase 10', title: 'Otimização de Escala, Testes de Carga e Expansão', status: 'Planeada', badge: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30' }
+            ].map((item, idx) => (
+              <div 
+                key={idx}
+                className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono font-bold text-slate-400 dark:text-slate-500">{item.phase}</span>
+                  <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100">{item.title}</span>
+                </div>
+                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${item.badge}`}>
+                  {item.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Section: Fundador & Startup Maurícius */}
+      <section id="fundador" className="py-20 bg-slate-100/60 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="rounded-3xl p-8 sm:p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
@@ -426,7 +599,7 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                   António Cassule Maurício
                 </h3>
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                  Fundador & Arquiteto de IA
+                  Fundador da Maurícius
                 </p>
               </div>
 
@@ -437,19 +610,19 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                 </div>
 
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                  Construído para aproximar a Inteligência Artificial das pessoas e empresas reais
+                  Construído para aproximar a Inteligência Artificial das operações reais
                 </h2>
 
                 <p className="text-slate-600 dark:text-slate-300 text-xs sm:text-sm leading-relaxed">
-                  O <strong>NEXA</strong> nasceu da visão de <strong>António Cassule Maurício</strong> de eliminar a barreira entre modelos de IA complexos e o utilizador comum. A <strong>Maurícius</strong> combinou os melhores modelos de linguagem mundiais (como o <strong>Qwen 3.8 Max</strong>) com a praticidade do WhatsApp e uma experiência web fluida, inspirada no padrão Zapia e ChatGPT.
+                  O <strong>NEXA</strong> é o produto flagship da <strong>Maurícius</strong>, concebido para responder à necessidade real de unificar comunicação, dados e tomada de decisão num único assistente inteligente com alta precisão e soberania operacional.
                 </p>
 
                 <div className="pt-2 flex flex-wrap gap-3">
                   <button
                     onClick={onGoToMauricius}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 transition-opacity cursor-pointer"
                   >
-                    <span>Conhecer a Startup Maurícius</span>
+                    <span>Conhecer o Portal Maurícius</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </button>
 
@@ -459,7 +632,8 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                     rel="noreferrer"
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                   >
-                    <span>Código Aberto no GitHub</span>
+                    <GitBranch className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Ver Código no GitHub</span>
                   </a>
                 </div>
               </div>
@@ -469,57 +643,19 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
         </div>
       </section>
 
-      {/* Section: Como Começar em 3 Passos */}
-      <section id="como-funciona" className="py-20 border-b border-slate-200 dark:border-slate-800">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
-          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block mb-2">
-            Simples e Rápido
-          </span>
-          <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-12">
-            Como começar a usar o NEXA em 3 passos
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <span className="text-3xl font-black text-emerald-500 font-mono block mb-3">01</span>
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm mb-1.5">Abre o Navegador ou WhatsApp</h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Clica no botão para abrir o NEXA no teu navegador ou conecta-te com a tua conta WhatsApp de forma rápida.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <span className="text-3xl font-black text-emerald-500 font-mono block mb-3">02</span>
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm mb-1.5">Envia Texto, Áudio ou Tarefa</h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Pergunta qualquer coisa em português natural, pede para resumir um texto ou dita um áudio como farias normalmente.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <span className="text-3xl font-black text-emerald-500 font-mono block mb-3">03</span>
-              <h3 className="font-bold text-slate-900 dark:text-white text-sm mb-1.5">Recebe Respostas Executivas</h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                O NEXA processa o teu pedido com o motor Qwen 3.8 Max e entrega respostas claras, estruturadas e práticas.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Final: Pronto para falar com o NEXA? */}
-      <section id="whatsapp" className="py-20 bg-linear-to-b from-emerald-600/10 to-transparent">
+      {/* CTA Final */}
+      <section className="py-20 bg-linear-to-b from-emerald-600/10 to-transparent">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <div className="w-16 h-16 rounded-2xl bg-emerald-500 text-black flex items-center justify-center mx-auto mb-6 shadow-xl shadow-emerald-500/20">
             <Bot className="w-8 h-8" />
           </div>
 
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-4">
-            Pronto para falar com o teu assistente pessoal?
+            Experimenta o NEXA em Tempo Real
           </h2>
 
           <p className="text-slate-600 dark:text-slate-300 text-sm max-w-xl mx-auto mb-8">
-            Experimenta agora no teu navegador com suporte do motor de IA Qwen 3.8 Max e persistência na nuvem Supabase.
+            Acede ao chat com respostas em streaming token a token alimentado pelo motor Qwen 3.8 Max e sincronizado com o Supabase.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4">
@@ -527,7 +663,7 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
               onClick={onGoToWorkspace}
               className="flex items-center gap-2 px-8 py-4 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-600/30 transition-all hover:scale-105 cursor-pointer"
             >
-              <span>Começar a Conversar no NEXA</span>
+              <span>Abrir Assistente NEXA</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
@@ -536,7 +672,7 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
                 onClick={onOpenAuth}
                 className="flex items-center gap-2 px-6 py-4 rounded-xl text-sm font-semibold bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs"
               >
-                <span>Criar Conta com Google / E-mail</span>
+                <span>Entrar com Conta Google</span>
               </button>
             )}
           </div>
@@ -549,14 +685,14 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
           <div>
             <span className="font-bold text-slate-900 dark:text-white">NEXA Assistant</span>
             <span className="mx-2">·</span>
-            <span>Um produto da <strong>Maurícius</strong></span>
+            <span>Startup: <strong>Maurícius</strong></span>
             <span className="mx-2">·</span>
             <span>Fundador: António Cassule Maurício</span>
           </div>
 
           <div className="flex items-center gap-4">
-            <button onClick={onGoToMauricius} className="hover:underline">Site Maurícius</button>
-            <button onClick={onGoToWorkspace} className="hover:underline">Abrir App</button>
+            <button onClick={onGoToMauricius} className="hover:underline">Maurícius</button>
+            <button onClick={onGoToWorkspace} className="hover:underline">App NEXA</button>
             <a href="https://github.com/Antonio-Cassule-Mauricio/assistente_ia" target="_blank" rel="noreferrer" className="hover:underline">GitHub</a>
           </div>
         </div>

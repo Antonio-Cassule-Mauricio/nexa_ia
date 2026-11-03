@@ -13,7 +13,8 @@ import {
   ArrowRight,
   Sun,
   Moon,
-  Globe
+  Globe,
+  Plus
 } from 'lucide-react';
 import { Conversation } from '../types';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -30,6 +31,7 @@ interface ChatViewProps {
   onToggleMobileSidebar: () => void;
   activeModelName: string;
   onGoToNexaSite: () => void;
+  onNewConversation: () => void;
 }
 
 const STARTER_PROMPTS = [
@@ -69,7 +71,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onCreateTaskFromText,
   onToggleMobileSidebar,
   activeModelName,
-  onGoToNexaSite
+  onGoToNexaSite,
+  onNewConversation
 }) => {
   const { theme, toggleTheme } = useTheme();
   const [inputText, setInputText] = useState('');
@@ -146,6 +149,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
         {/* Quick Actions Header */}
         <div className="flex items-center gap-1.5">
           <button
+            onClick={onNewConversation}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-all cursor-pointer"
+            title="Iniciar uma nova conversa vazia"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Nova Conversa</span>
+          </button>
+
+          <button
             onClick={onSummarizeChat}
             disabled={isThinking || conversation.messages.length < 2}
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-40 disabled:pointer-events-none border border-slate-200 dark:border-slate-700/60 shadow-xs"
@@ -220,7 +232,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   {isUser ? (
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
                   ) : (
-                    <MarkdownRenderer content={message.content} />
+                    <div className="relative">
+                      {message.content ? (
+                        <MarkdownRenderer content={message.content} />
+                      ) : (
+                        <span className="text-xs text-slate-400 italic flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                          A processar resposta executiva com Qwen 3.8 Max...
+                        </span>
+                      )}
+                      {/* Cursor de digitação em streaming estilo ChatGPT */}
+                      {isThinking && !isUser && message.content && (
+                        <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse align-middle rounded-xs" />
+                      )}
+                    </div>
                   )}
 
                   {/* Assistant Actions */}
@@ -268,8 +293,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
             );
           })}
 
-          {/* Thinking State */}
-          {isThinking && (
+          {/* Thinking State — Apenas antes do primeiro token do assistente começar a fluir */}
+          {isThinking && (conversation.messages.length === 0 || conversation.messages[conversation.messages.length - 1]?.role === 'user') && (
             <div className="flex gap-3 justify-start items-center">
               <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20 text-white animate-pulse">
                 <Bot className="w-4 h-4" />
@@ -280,7 +305,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.2s]"></span>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.4s]"></span>
                 </div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">NEXA está a pensar...</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">NEXA está a pensar com Qwen 3.8 Max...</span>
               </div>
             </div>
           )}
