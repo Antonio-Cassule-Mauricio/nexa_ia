@@ -1,0 +1,8 @@
+{
+  "name": "NEXA Assistant",
+  "description": "Assistente pessoal inteligente de IA em português inspirado no Zapia e ChatGPT, com gestão de conversas, tarefas, análise de informações e hub de mensagens.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
