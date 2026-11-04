@@ -7,7 +7,9 @@ import {
   Clock, 
   Sparkles, 
   Check, 
-  Menu
+  Menu,
+  ShieldCheck,
+  Database
 } from 'lucide-react';
 import { Task, TaskPriority, TaskStatus } from '../types';
 
@@ -18,6 +20,8 @@ interface TasksViewProps {
   onDeleteTask: (id: string) => void;
   onAskNexaForTasks: () => void;
   onToggleMobileSidebar: () => void;
+  currentUser?: any;
+  onOpenAuth?: () => void;
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
@@ -26,7 +30,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
   onUpdateTaskStatus,
   onDeleteTask,
   onAskNexaForTasks,
-  onToggleMobileSidebar
+  onToggleMobileSidebar,
+  currentUser,
+  onOpenAuth
 }) => {
   const [filter, setFilter] = useState<'todas' | 'pendente' | 'em_curso' | 'concluida'>('todas');
   const [isAdding, setIsAdding] = useState(false);
@@ -129,6 +135,32 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 max-w-4xl mx-auto w-full">
+        {/* Banner de Segurança & Autenticação Supabase */}
+        {!currentUser && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-200 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0" />
+              <div>
+                <p className="font-bold flex items-center gap-1.5">
+                  <span>Base de Dados Supabase Segura com Row Level Security (RLS)</span>
+                  <Database className="w-3.5 h-3.5 inline text-amber-500" />
+                </p>
+                <p className="text-[11px] opacity-90">
+                  Para guardar tarefas reais na tua conta com proteção criptográfica, inicia sessão ou cria a tua conta.
+                </p>
+              </div>
+            </div>
+            {onOpenAuth && (
+              <button
+                onClick={onOpenAuth}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shrink-0 shadow-xs transition-colors cursor-pointer"
+              >
+                Entrar / Criar Conta
+              </button>
+            )}
+          </div>
+        )}
+
         {/* New Task Inline Form */}
         {isAdding && (
           <form onSubmit={handleCreateTask} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3 shadow-lg">

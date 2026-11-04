@@ -17,14 +17,15 @@ import {
   Sun,
   Moon,
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  Link2
 } from 'lucide-react';
 import { Conversation } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
 interface SidebarProps {
-  currentTab: 'chat' | 'tasks' | 'whatsapp';
-  onSelectTab: (tab: 'chat' | 'tasks' | 'whatsapp') => void;
+  currentTab: 'chat' | 'tasks' | 'whatsapp' | 'connectors';
+  onSelectTab: (tab: 'chat' | 'tasks' | 'whatsapp' | 'connectors') => void;
   conversations: Conversation[];
   activeConversationId: string;
   onSelectConversation: (id: string) => void;
@@ -227,6 +228,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {unreadWhatsAppCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => { onSelectTab('connectors'); onCloseMobile(); }}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              currentTab === 'connectors'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Link2 className="w-4 h-4" />
+              <span>Conectores</span>
+            </div>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold">
+              6
+            </span>
           </button>
         </div>
 

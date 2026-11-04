@@ -1,17 +1,23 @@
 import { Conversation, Task, WhatsAppContact, WhatsAppMessage, AppSettings } from '../types';
 
 export const INITIAL_SYSTEM_PROMPT = `O teu nome é NEXA.
-És o assistente pessoal de elite da Maurícius, fundada por António Cassule Maurício.
-És inteligente, profissional, prestável e eficiente.
-Falas português de forma natural, moderna e estruturada.
-Ajudas o utilizador a:
-- Organizar tarefas e rotinas executivas.
-- Analisar dados e documentos com rigor.
-- Resumir conversas e decisões estratégicas.
-- Preparar mensagens e integrar com o canal WhatsApp.
-- Resolver problemas complexos de negócios e tecnologia.
+És o assistente executivo e pessoal de elite da Maurícius, fundada por António Cassule Maurício.
+És ultra-inteligente, rigoroso, focado na verdade, eficiente e completamente isento de alucinações.
+Falas português de Angola / Portugal de forma natural, moderna, elegante e estruturada.
 
-Mantém sempre o contexto da conversa.`;
+PRINCÍPIOS DE VERDADE E ANTI-ALUCINAÇÃO:
+- Nunca inventes dados, estatísticas, empresas ou eventos fictícios. Se não tens uma informação confirmada ou acesso direto a ela, diz claramente o que sabes e o que precisa de confirmação.
+- Baseia-te estritamente na base de dados conectada, nos conectores autorizados e no contexto da conversa.
+
+CAPACIDADES MULTICANAIS E AÇÕES DIRETAS:
+1. GESTÃO DE TAREFAS: Se o utilizador pedir para agendar ou criar uma tarefa ("agenda no gestor de tarefas", "cria tarefa de follow-up", etc.), estrutura a tarefa detalhando título, prioridade (alta, média ou baixa) e prazo.
+2. CALENDÁRIO: Se o utilizador disser "no calendário cria um evento" ou "marca no calendário que no dia X será atividade Y", prepara e confirma o agendamento no Google Calendar.
+3. E-MAIL & CANDIDATURAS: Se o utilizador pedir para redigir ou enviar um e-mail com ou sem anexo (ex: candidatura de emprego, proposta comercial, confirmação de reunião), redige o e-mail completo, pergunta pelo documento/anexo se necessário, e apresenta a confirmação de envio.
+4. WHATSAPP & @NEXA: Quando for mencionado com @nexa ou for pedido para enviar uma mensagem a alguém (ex: "mande mensagem no Alex"), localiza o contacto, pergunta qual a mensagem pretendida, confirma com o utilizador antes de enviar e simula a digitação real antes do envio.
+5. PLANEAMENTO DE VIAGENS & PROJETOS: Estrutura itinerários, cronogramas, custos estimados e listas de verificação com clareza executiva.
+6. ÁUDIO & VOZ: Compreende mensagens de voz e prepara respostas claras, concisas e sonoras adequadas para serem ouvidas em áudio.
+
+Mantém sempre o contexto da conversa e atua com autonomia operacional controlada.`;
 
 export const INITIAL_CONVERSATION: Conversation = {
   id: 'conv-1',
@@ -38,118 +44,14 @@ Como posso alavancar as tuas metas hoje?`,
   ]
 };
 
-export const INITIAL_TASKS: Task[] = [
-  {
-    id: 'task-1',
-    title: 'Validar integração da API Qwen (qwen3.8-max)',
-    description: 'Confirmar chamadas de chat e contingência com o motor executivo da Maurícius',
-    priority: 'alta',
-    status: 'em_curso',
-    dueDate: 'Hoje',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'task-2',
-    title: 'Sincronizar base de dados Supabase PostgreSQL',
-    description: 'Ativar tabelas conversations e messages com Row Level Security (RLS)',
-    priority: 'alta',
-    status: 'pendente',
-    dueDate: 'Hoje',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: 'task-3',
-    title: 'Testar módulo WhatsApp Bridge',
-    description: 'Simular leitura de mensagens e extração automática de tarefas para a equipa',
-    priority: 'media',
-    status: 'pendente',
-    dueDate: 'Amanhã',
-    createdAt: new Date().toISOString()
-  }
-];
+// Gestor de Tarefas — Dados Reais Sincronizados com Supabase (sem dados fictícios)
+export const INITIAL_TASKS: Task[] = [];
 
-export const INITIAL_WHATSAPP_CONTACTS: WhatsAppContact[] = [
-  {
-    id: 'wa-1',
-    name: 'Maurícius Core Team 🚀',
-    phone: '+244 923 001 234',
-    unreadCount: 2,
-    lastMessage: 'António, a versão web do NEXA já está pronta para demonstração.',
-    lastMessageTime: '10:45',
-    isGroup: true
-  },
-  {
-    id: 'wa-2',
-    name: 'Cliente Corporativo (Luanda)',
-    phone: '+244 912 345 678',
-    unreadCount: 1,
-    lastMessage: 'Gostaríamos de agendar a apresentação da automação de IA.',
-    lastMessageTime: '09:20',
-    isGroup: false
-  },
-  {
-    id: 'wa-3',
-    name: 'Parceiro Tecnológico',
-    phone: '+351 912 987 654',
-    unreadCount: 0,
-    lastMessage: 'Infraestrutura de nuvem pronta e escalável.',
-    lastMessageTime: 'Ontem',
-    isGroup: false
-  }
-];
+// WhatsApp Hub — Contactos Reais Sincronizados com a Base de Dados
+export const INITIAL_WHATSAPP_CONTACTS: WhatsAppContact[] = [];
 
-export const INITIAL_WHATSAPP_MESSAGES: Record<string, WhatsAppMessage[]> = {
-  'wa-1': [
-    {
-      id: 'wam-1',
-      contactId: 'wa-1',
-      sender: 'contact',
-      text: 'Bom dia equipa Maurícius! O motor Qwen 3.8 Max já está integrado com sucesso.',
-      timestamp: '09:30'
-    },
-    {
-      id: 'wam-2',
-      contactId: 'wa-1',
-      sender: 'user',
-      text: 'Excelente! Vamos validar a sincronização com o Supabase e os fluxos de tarefas.',
-      timestamp: '10:00'
-    },
-    {
-      id: 'wam-3',
-      contactId: 'wa-1',
-      sender: 'contact',
-      text: 'António, a versão web do NEXA já está pronta para demonstração.',
-      timestamp: '10:45',
-      reaction: '🔥'
-    }
-  ],
-  'wa-2': [
-    {
-      id: 'wam-4',
-      contactId: 'wa-2',
-      sender: 'contact',
-      text: 'Bom dia António! Analisámos a proposta de valor da Maurícius.',
-      timestamp: '09:15'
-    },
-    {
-      id: 'wam-5',
-      contactId: 'wa-2',
-      sender: 'contact',
-      text: 'Gostaríamos de agendar a apresentação da automação de IA.',
-      timestamp: '09:20'
-    }
-  ],
-  'wa-3': [
-    {
-      id: 'wam-6',
-      contactId: 'wa-3',
-      sender: 'contact',
-      text: 'Infraestrutura de nuvem pronta e escalável.',
-      timestamp: 'Ontem, 18:00',
-      reaction: '✅'
-    }
-  ]
-};
+// WhatsApp Hub — Mensagens Reais Sincronizadas com a Base de Dados
+export const INITIAL_WHATSAPP_MESSAGES: Record<string, WhatsAppMessage[]> = {};
 
 export const INITIAL_SETTINGS: AppSettings = {
   modelName: 'qwen3.8-max',

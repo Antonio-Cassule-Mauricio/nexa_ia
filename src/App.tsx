@@ -40,6 +40,7 @@ import { WhatsAppHubView } from './components/WhatsAppHubView';
 import { SettingsModal } from './components/SettingsModal';
 import { MauriciusLandingPage } from './components/MauriciusLandingPage';
 import { NexaLandingPage } from './components/NexaLandingPage';
+import { NexaConnectorsSection } from './components/NexaConnectorsSection';
 import { SupabaseAuthModal } from './components/SupabaseAuthModal';
 import { 
   sendMessageToNexa, 
@@ -50,11 +51,18 @@ import {
   supabase, 
   saveConversationToSupabase, 
   saveMessageToSupabase, 
-  loadUserConversationsFromSupabase 
+  loadUserConversationsFromSupabase,
+  loadUserTasksFromSupabase,
+  saveTaskToSupabase,
+  deleteTaskFromSupabase,
+  loadUserWhatsAppContactsFromSupabase,
+  saveWhatsAppContactToSupabase,
+  deleteWhatsAppContactFromSupabase,
+  loadWhatsAppMessagesForContactFromSupabase,
+  saveWhatsAppMessageToSupabase
 } from './services/supabase';
 import { 
-  sendWhatsAppMessageApi, 
-  syncContactToSupabase 
+  sendWhatsAppMessageApi 
 } from './services/whatsapp';
 import { Check, Bot, Globe } from 'lucide-react';
 
@@ -119,8 +127,8 @@ export const App: React.FC = () => {
     return saved ? JSON.parse(saved) : INITIAL_SETTINGS;
   });
 
-  // Aba ativa dentro do Workspace: 'chat', 'tasks' ou 'whatsapp'
-  const [currentTab, setCurrentTab] = useState<'chat' | 'tasks' | 'whatsapp'>('chat');
+  // Aba ativa dentro do Workspace: 'chat', 'tasks', 'whatsapp' ou 'connectors'
+  const [currentTab, setCurrentTab] = useState<'chat' | 'tasks' | 'whatsapp' | 'connectors'>('chat');
   
   // Indicador de digitação e raciocínio do NEXA ("NEXA está a pensar...")
   const [isThinking, setIsThinking] = useState(false);
@@ -197,15 +205,43 @@ export const App: React.FC = () => {
   };
 
   // Conversa ativa selecionada
-  // Sincroniza conversas do Supabase quando o utilizador se autentica
+  // Sincroniza conversas, tarefas e WhatsApp do Supabase quando o utilizador se autentica
   useEffect(() => {
     if (currentUser?.id) {
+      // 1. Carrega conversas do utilizador
       loadUserConversationsFromSupabase(currentUser.id).then(cloudConvs => {
         if (cloudConvs && cloudConvs.length > 0) {
           setConversations(cloudConvs);
           setActiveConversationId(cloudConvs[0].id);
         }
       });
+
+      // 2. Carrega tarefas reais do utilizador
+      loadUserTasksFromSupabase(currentUser.id).then(cloudTasks => {
+        if (cloudTasks) {
+          setTasks(cloudTasks);
+        }
+      });
+
+      // 3. Carrega contactos reais e histórico de WhatsApp do utilizador
+      loadUserWhatsAppContactsFromSupabase(currentUser.id).then(async cloudContacts => {
+        if (cloudContacts) {
+          setWhatsappContacts(cloudContacts);
+          const msgsMap: Record<string, WhatsAppMessage[]> = {};
+          for (const c of cloudContacts) {
+            const msgs = await loadWhatsAppMessagesForContactFromSupabase(c.id, currentUser.id);
+            if (msgs) {
+              msgsMap[c.id] = msgs;
+            }
+          }
+          setWhatsappMessages(msgsMap);
+        }
+      });
+    } else {
+      // Quando não autenticado, não exibe dados de terceiros
+      setTasks([]);
+      setWhatsappContacts([]);
+      setWhatsappMessages({});
     }
   }, [currentUser?.id]);
 
@@ -435,6 +471,9 @@ export const App: React.FC = () => {
     };
 
     setTasks(prev => [newTask, ...prev]);
+    if (currentUser?.id) {
+      saveTaskToSupabase(newTask, currentUser.id);
+    }
     showToast('Tarefa adicionada à Gestão de Tarefas!');
   };
 
@@ -446,25 +485,36 @@ export const App: React.FC = () => {
       createdAt: new Date().toISOString()
     };
     setTasks(prev => [newTask, ...prev]);
+    if (currentUser?.id) {
+      saveTaskToSupabase(newTask, currentUser.id);
+    }
     showToast('Nova tarefa criada');
   };
 
   const handleUpdateTaskStatus = (id: string, status: TaskStatus) => {
     setTasks(prev =>
-      prev.map(t =>
-        t.id === id
-          ? {
-              ...t,
-              status,
-              completedAt: status === 'concluida' ? new Date().toISOString() : undefined
-            }
-          : t
-      )
+      prev.map(t => {
+        if (t.id === id) {
+          const updated: Task = {
+            ...t,
+            status,
+            completedAt: status === 'concluida' ? new Date().toISOString() : undefined
+          };
+          if (currentUser?.id) {
+            saveTaskToSupabase(updated, currentUser.id);
+          }
+          return updated;
+        }
+        return t;
+      })
     );
   };
 
   const handleDeleteTask = (id: string) => {
     setTasks(prev => prev.filter(t => t.id !== id));
+    if (currentUser?.id) {
+      deleteTaskFromSupabase(id, currentUser.id);
+    }
   };
 
   const handleAskNexaForTasks = () => {
@@ -501,6 +551,18 @@ export const App: React.FC = () => {
       )
     );
 
+    // Persistência na base de dados Supabase
+    if (currentUser?.id) {
+      saveWhatsAppMessageToSupabase(newMsg, contactId, currentUser.id);
+      if (contact) {
+        saveWhatsAppContactToSupabase({
+          ...contact,
+          lastMessage: text,
+          lastMessageTime: 'Agora'
+        }, currentUser.id);
+      }
+    }
+
     // Despacho real pelo backend Express (/api/whatsapp/send)
     try {
       const sendResult = await sendWhatsAppMessageApi(
@@ -528,7 +590,9 @@ export const App: React.FC = () => {
       ...prev,
       [newContact.id]: []
     }));
-    syncContactToSupabase(newContact, currentUser?.id);
+    if (currentUser?.id) {
+      saveWhatsAppContactToSupabase(newContact, currentUser.id);
+    }
     showToast(`Contacto ${newContact.name} adicionado com sucesso!`);
   };
 
@@ -540,6 +604,9 @@ export const App: React.FC = () => {
       delete copy[contactId];
       return copy;
     });
+    if (currentUser?.id) {
+      deleteWhatsAppContactFromSupabase(contactId, currentUser.id);
+    }
     showToast('Contacto removido.');
   };
 
@@ -615,6 +682,16 @@ export const App: React.FC = () => {
       ...prev,
       [contactId!]: [...(prev[contactId!] || []), ...newMessages]
     }));
+
+    // Persiste mensagens e contacto no Supabase
+    if (currentUser?.id && contactId) {
+      if (contact) {
+        saveWhatsAppContactToSupabase(contact, currentUser.id);
+      }
+      for (const msg of newMessages) {
+        saveWhatsAppMessageToSupabase(msg, contactId, currentUser.id);
+      }
+    }
 
     showToast(aiReply ? 'Nova mensagem respondida pelo NEXA!' : 'Nova mensagem recebida no WhatsApp');
   };
@@ -777,6 +854,8 @@ export const App: React.FC = () => {
             activeModelName={serverStatus.engine}
             onGoToNexaSite={() => setViewMode('nexa')}
             onNewConversation={handleNewConversation}
+            onAddTaskDirectly={handleAddTask}
+            onSendWhatsAppDirectly={handleSendWhatsAppMessage}
           />
         )}
 
@@ -788,6 +867,8 @@ export const App: React.FC = () => {
             onDeleteTask={handleDeleteTask}
             onAskNexaForTasks={handleAskNexaForTasks}
             onToggleMobileSidebar={() => setIsMobileSidebarOpen(true)}
+            currentUser={currentUser}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
           />
         )}
 
@@ -804,7 +885,20 @@ export const App: React.FC = () => {
             onAddContact={handleAddWhatsAppContact}
             onDeleteContact={handleDeleteWhatsAppContact}
             onReceiveIncomingMessage={handleReceiveIncomingWhatsAppMessage}
+            currentUser={currentUser}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
           />
+        )}
+
+        {currentTab === 'connectors' && (
+          <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950">
+            <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+              <NexaConnectorsSection
+                currentUser={currentUser}
+                onOpenAuth={() => setIsAuthModalOpen(true)}
+              />
+            </div>
+          </div>
         )}
       </main>
 

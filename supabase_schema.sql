@@ -171,5 +171,58 @@ CREATE POLICY "Permitir envio e inserção de mensagens ao proprietário"
 CREATE POLICY "Permitir gestão de configurações WhatsApp ao proprietário"
     ON public.whatsapp_configs FOR ALL USING (auth.uid() = user_id OR auth.uid() IS NULL);
 
--- Concluído com sucesso! Cole este script no SQL Editor do painel Supabase.
+-- ==============================================================================
+-- MÓDULO DE GESTÃO DE TAREFAS (TASKS & PRODUCTIVITY)
+-- ==============================================================================
+
+-- 11. Tabela de Tarefas e Afazeres Executivos (tasks)
+CREATE TABLE IF NOT EXISTS public.tasks (
+    id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    priority TEXT NOT NULL CHECK (priority IN ('alta', 'media', 'baixa')),
+    status TEXT NOT NULL CHECK (status IN ('pendente', 'em_curso', 'concluida')),
+    due_date TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Índices de consulta rápida para tarefas
+CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON public.tasks(user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON public.tasks(created_at DESC);
+
+-- Ativação de Row Level Security (RLS) para Tarefas
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de RLS para a tabela TASKS
+CREATE POLICY "Permitir leitura de tarefas apenas ao proprietário autenticado"
+    ON public.tasks FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Permitir criação de tarefas apenas ao proprietário autenticado"
+    ON public.tasks FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Permitir atualização de tarefas apenas ao proprietário autenticado"
+    ON public.tasks FOR UPDATE
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Permitir eliminação de tarefas apenas ao proprietário autenticado"
+    ON public.tasks FOR DELETE
+    USING (auth.uid() = user_id);
+
+-- Trigger de updated_at para Tarefas
+DROP TRIGGER IF EXISTS trigger_update_task_timestamp ON public.tasks;
+CREATE TRIGGER trigger_update_task_timestamp
+    BEFORE UPDATE ON public.tasks
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_updated_at();
+
+-- ==============================================================================
+-- SCRIPT FINALIZADO COM SUCESSO!
+-- Execute no SQL Editor do painel Supabase (https://qcerpfbyrifbfqnphxdl.supabase.co)
+-- ==============================================================================
 

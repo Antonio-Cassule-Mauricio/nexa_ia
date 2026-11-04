@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { getPlatformMetrics, sendMessageToNexa } from '../services/api';
+import { ScrollAnimationSection } from './ScrollAnimationSection';
+import { NexaConnectorsSection } from './NexaConnectorsSection';
 
 interface NexaLandingPageProps {
   onGoToWorkspace: () => void;
@@ -132,6 +134,7 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
           {/* Navigation Links baseados estritamente na visão real */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-slate-600 dark:text-slate-300">
             <a href="#proposito" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Visão & Propósito</a>
+            <a href="#conectores" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors font-semibold text-emerald-500">Conectores</a>
             <a href="#arquitetura" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Arquitetura Real</a>
             <a href="#roadmap" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Roadmap de Fases</a>
             <a href="#fundador" className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">Fundador & Startup</a>
@@ -433,6 +436,9 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
         </div>
       </section>
 
+      {/* SECÇÃO ISOLADA DE ANIMAÇÃO POR SCROLL (.sa-) */}
+      <ScrollAnimationSection />
+
       {/* Section: Por que estou a desenvolver o NEXA Assistant? (Visão Oficial) */}
       <section id="proposito" className="py-20 border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -642,6 +648,9 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
           </div>
         </div>
       </section>
+
+      {/* SECÇÃO OFICIAL DE CONECTORES REAIS DO NEXA */}
+      <NexaConnectorsSection currentUser={currentUser} onOpenAuth={onOpenAuth} />
 
       {/* CTA Final */}
       <section className="py-20 bg-linear-to-b from-emerald-600/10 to-transparent">

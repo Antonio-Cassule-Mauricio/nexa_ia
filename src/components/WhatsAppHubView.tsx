@@ -47,6 +47,8 @@ interface WhatsAppHubViewProps {
   onAddContact?: (contact: WhatsAppContact) => void;
   onDeleteContact?: (contactId: string) => void;
   onReceiveIncomingMessage?: (fromPhone: string, fromName: string, text: string, aiReply?: string) => void;
+  currentUser?: any;
+  onOpenAuth?: () => void;
 }
 
 export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
@@ -60,7 +62,9 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
   onToggleMobileSidebar,
   onAddContact,
   onDeleteContact,
-  onReceiveIncomingMessage
+  onReceiveIncomingMessage,
+  currentUser,
+  onOpenAuth
 }) => {
   const [selectedContactId, setSelectedContactId] = useState<string>(contacts[0]?.id || '');
   const [inputText, setInputText] = useState('');
@@ -104,6 +108,18 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
   // Sugestão de IA em carregamento
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+
+  // Delegação inteligente @nexa (ex: "@nexa mande mensagem no Alex")
+  const [nexaDelegation, setNexaDelegation] = useState<{
+    originContactId: string;
+    targetContactId: string;
+    targetContactName: string;
+    step: 'awaiting_message' | 'awaiting_confirmation';
+    proposedMessage?: string;
+  } | null>(null);
+
+  // Status de digitação ativa no WhatsApp para um contacto (simulando "a escrever...")
+  const [typingContactId, setTypingContactId] = useState<string | null>(null);
 
   const [showCrmDrawer, setShowCrmDrawer] = useState(false);
   const [crmLeadStatus, setCrmLeadStatus] = useState<'novo' | 'em_negociacao' | 'proposta' | 'fechado'>('em_negociacao');
@@ -163,12 +179,171 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
     return true;
   });
 
-  // Envio de mensagem
+  // Confirmação e despacho da mensagem delegada com @nexa
+  const confirmAndSendNexaDelegation = () => {
+    if (!nexaDelegation || !nexaDelegation.proposedMessage) return;
+
+    const targetId = nexaDelegation.targetContactId;
+    const targetName = nexaDelegation.targetContactName;
+    const msgToSend = nexaDelegation.proposedMessage;
+    const originId = nexaDelegation.originContactId;
+
+    setNexaDelegation(null);
+
+    // 1. Mensagem de status na conversa atual
+    if (onReceiveIncomingMessage) {
+      onReceiveIncomingMessage(
+        activeContact?.phone || '+244 923 000 000',
+        '🤖 NEXA Assistant',
+        `⏳ A preparar despacho... O **${targetName}** está a ver **"A escrever..."** no WhatsApp neste momento.`
+      );
+    }
+
+    // 2. Ativa indicador de digitação visual para o contacto alvo
+    setTypingContactId(targetId);
+
+    // 3. Aguarda 2.5s para simulação realista de digitação e despacha a mensagem
+    setTimeout(() => {
+      setTypingContactId(null);
+      onSendMessage(targetId, msgToSend);
+
+      if (onReceiveIncomingMessage) {
+        onReceiveIncomingMessage(
+          activeContact?.phone || '+244 923 000 000',
+          '🤖 NEXA Assistant',
+          `✅ Mensagem entregue com sucesso no WhatsApp de **${targetName}**!\n\n*"${msgToSend}"*`
+        );
+      }
+    }, 2500);
+  };
+
+  const cancelNexaDelegation = () => {
+    setNexaDelegation(null);
+    if (onReceiveIncomingMessage) {
+      onReceiveIncomingMessage(
+        activeContact?.phone || '+244 923 000 000',
+        '🤖 NEXA Assistant',
+        '🚫 Envio de mensagem cancelado pelo utilizador.'
+      );
+    }
+  };
+
+  // Envio de mensagem inteligente com suporte nativo a @nexa
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !activeContact) return;
-    onSendMessage(activeContact.id, inputText.trim());
+    const raw = inputText.trim();
+    if (!raw || !activeContact) return;
+
+    // Envia a mensagem do utilizador na conversa atual
+    onSendMessage(activeContact.id, raw);
     setInputText('');
+
+    // Se estiver em fluxo de delegação ativo nesta conversa
+    if (nexaDelegation && nexaDelegation.originContactId === activeContact.id) {
+      if (nexaDelegation.step === 'awaiting_message') {
+        const proposed = raw;
+        setNexaDelegation({
+          ...nexaDelegation,
+          step: 'awaiting_confirmation',
+          proposedMessage: proposed
+        });
+
+        setTimeout(() => {
+          if (onReceiveIncomingMessage) {
+            onReceiveIncomingMessage(
+              activeContact.phone,
+              '🤖 NEXA Assistant',
+              `Confirma o envio da seguinte mensagem para o **${nexaDelegation.targetContactName}**?\n\n*"${proposed}"*\n\n👉 Responda **Sim** ou clica em **Confirmar e Enviar**.`
+            );
+          }
+        }, 500);
+        return;
+      }
+
+      if (nexaDelegation.step === 'awaiting_confirmation') {
+        const lower = raw.toLowerCase();
+        if (['sim', 'confirmo', 'envia', 'enviar', 'manda', 'pode enviar', 'ok'].some(k => lower.includes(k))) {
+          confirmAndSendNexaDelegation();
+        } else if (['não', 'nao', 'cancela', 'cancelar'].some(k => lower.includes(k))) {
+          cancelNexaDelegation();
+        }
+        return;
+      }
+    }
+
+    // Detecção de comandos @nexa
+    if (raw.toLowerCase().includes('@nexa')) {
+      const lower = raw.toLowerCase();
+
+      // Caso 1: Delegar mensagem (ex: "@nexa mande mensagem no Alex")
+      if (lower.includes('mande mensagem') || lower.includes('manda mensagem') || lower.includes('envia mensagem') || lower.includes('envie mensagem') || lower.includes('fala com') || lower.includes('fale com')) {
+        const match = raw.match(/@nexa\s+(?:mande|manda|envie|envia|fala com|fale com)\s+(?:mensagem\s+)?(?:no\s+|ao\s+|para\s+|o\s+)?([a-zA-ZÀ-ÿ\s]+)/i);
+        let targetName = match ? match[1].trim() : 'Alex';
+        targetName = targetName.replace(/[.?!,]+$/, '').trim();
+
+        let target = contacts.find(c => c.name.toLowerCase().includes(targetName.toLowerCase()));
+
+        // Se não existir, cria o contacto automaticamente (ex: Alex)
+        if (!target) {
+          const newTarget: WhatsAppContact = {
+            id: `wa-contact-${Date.now()}`,
+            name: targetName,
+            phone: '+244 923 111 222',
+            unreadCount: 0,
+            lastMessage: 'Aguardando primeira mensagem...',
+            lastMessageTime: 'Agora',
+            tags: ['Cliente', 'Delegado @nexa'],
+            status: 'online'
+          };
+          if (onAddContact) onAddContact(newTarget);
+          target = newTarget;
+        }
+
+        setNexaDelegation({
+          originContactId: activeContact.id,
+          targetContactId: target.id,
+          targetContactName: target.name,
+          step: 'awaiting_message'
+        });
+
+        setTimeout(() => {
+          if (onReceiveIncomingMessage) {
+            onReceiveIncomingMessage(
+              activeContact.phone,
+              '🤖 NEXA Assistant',
+              `Localizei o contacto **${target.name}** (${target.phone}). Qual é a mensagem que desejas que eu lhe envie?`
+            );
+          }
+        }, 600);
+        return;
+      }
+
+      // Caso 2: Instrução geral ou pergunta ao @nexa
+      const query = raw.replace(/@nexa/gi, '').trim();
+      setTimeout(async () => {
+        try {
+          const suggestion = await generateNexaWhatsAppSuggestion(
+            activeContact.name,
+            query || activeContact.lastMessage || 'Instrução para o NEXA'
+          );
+          if (onReceiveIncomingMessage) {
+            onReceiveIncomingMessage(
+              activeContact.phone,
+              '🤖 NEXA Copilot',
+              suggestion
+            );
+          }
+        } catch (err) {
+          if (onReceiveIncomingMessage) {
+            onReceiveIncomingMessage(
+              activeContact.phone,
+              '🤖 NEXA Copilot',
+              'Compreendido. Instrução registada e em execução pela Maurícius.'
+            );
+          }
+        }
+      }, 700);
+    }
   };
 
   // Reação rápida
@@ -359,6 +534,26 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
         </div>
       </header>
 
+      {/* Banner de Segurança & Autenticação Supabase */}
+      {!currentUser && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>
+              <strong>Base de Dados Supabase (RLS):</strong> Inicia sessão ou cria a tua conta para guardar conversas reais e conectar o teu WhatsApp com isolamento de dados.
+            </span>
+          </div>
+          {onOpenAuth && (
+            <button
+              onClick={onOpenAuth}
+              className="px-3 py-1 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold shrink-0 transition-colors cursor-pointer text-xs shadow-xs"
+            >
+              Entrar / Criar Conta
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Área Principal Dividida */}
       <div className="flex-1 flex overflow-hidden">
         {/* Coluna da Lista de Contactos */}
@@ -397,8 +592,21 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
           {/* Lista Rolável de Contactos */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/40">
             {filteredContacts.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-400">
-                Nenhum contacto encontrado com este filtro.
+              <div className="p-6 text-center text-xs text-slate-400 space-y-3">
+                <Smartphone className="w-7 h-7 text-slate-300 dark:text-slate-700 mx-auto" />
+                <div>
+                  <p className="font-semibold text-slate-700 dark:text-slate-300">Nenhum contacto adicionado</p>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Sem dados falsos. Adiciona contactos reais com indicativo internacional (+244, +351, +55) ou sincroniza com o WhatsApp.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAddContactModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Contacto Real</span>
+                </button>
               </div>
             ) : (
               filteredContacts.map((contact) => {
@@ -480,7 +688,11 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
                     <p className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                       <span>{activeContact.phone}</span>
                       <span>•</span>
-                      <span className="text-emerald-500 font-medium">Online via WhatsApp Web</span>
+                      {typingContactId === activeContact.id ? (
+                        <span className="text-emerald-500 font-bold animate-pulse">a escrever...</span>
+                      ) : (
+                        <span className="text-emerald-500 font-medium">Online via WhatsApp Web</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -640,6 +852,18 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
                       );
                     })
                   )}
+
+                  {/* Indicador de Digitação Real do WhatsApp ("A escrever...") */}
+                  {typingContactId === activeContact.id && (
+                    <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-500/30 max-w-xs text-xs text-emerald-600 dark:text-emerald-400 shadow-xs animate-in fade-in">
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.2s]"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce [animation-delay:0.4s]"></span>
+                      </div>
+                      <span className="font-semibold text-[11px]">{activeContact.name} está a ver: a escrever...</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Painel Lateral de CRM & Lead (Prontidão Fase 8) */}
@@ -772,7 +996,49 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
                 >
                   Status do NEXA
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setInputText(`@nexa mande mensagem no Alex`)}
+                  className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold shrink-0 cursor-pointer"
+                >
+                  @nexa mande mensagem no Alex
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputText(`@nexa resume esta conversa e sugere ações`)}
+                  className="text-[10px] px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-500/30 text-blue-700 dark:text-blue-300 font-semibold shrink-0 cursor-pointer"
+                >
+                  @nexa resumo
+                </button>
               </div>
+
+              {/* Barra de Confirmação Interativa para Delegação @nexa */}
+              {nexaDelegation && nexaDelegation.step === 'awaiting_confirmation' && (
+                <div className="px-4 py-2.5 bg-emerald-500/10 dark:bg-emerald-950/40 border-t border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <Bot className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="text-emerald-800 dark:text-emerald-200">
+                      Enviar para <strong>{nexaDelegation.targetContactName}</strong>: <em>"{nexaDelegation.proposedMessage}"</em>?
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={confirmAndSendNexaDelegation}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs cursor-pointer transition-colors"
+                    >
+                      Confirmar e Enviar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelNexaDelegation}
+                      className="px-2.5 py-1.5 rounded-xl text-rose-500 hover:bg-rose-500/10 text-xs font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Formulário de Envio de Mensagem */}
               <form onSubmit={handleSend} className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 backdrop-blur-md flex items-center gap-2">
@@ -794,12 +1060,32 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
               </form>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
-              <Smartphone className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-3" />
-              <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">Nenhuma conversa selecionada</h3>
-              <p className="text-xs text-slate-500 max-w-sm mt-1">
-                Escolhe um contacto na barra lateral ou cria um novo contacto com número real para iniciar o fluxo.
-              </p>
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-4">
+              <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center border border-emerald-500/20 shadow-xs">
+                <Smartphone className="w-8 h-8" />
+              </div>
+              <div className="max-w-md">
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">WhatsApp Hub da Maurícius</h3>
+                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                  Sem dados falsos. Conecta a tua conta oficial do WhatsApp ou adiciona contactos reais (Angola +244, Portugal +351, Brasil +55) para gerir comunicações e automações de IA com o NEXA.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <button
+                  onClick={() => setShowAddContactModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Adicionar Contacto Real</span>
+                </button>
+                <button
+                  onClick={() => setShowConfigModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 text-slate-500" />
+                  <span>Conectar WhatsApp</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

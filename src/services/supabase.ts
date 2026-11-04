@@ -15,7 +15,14 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { Conversation, Message } from '../types';
+import { 
+  Conversation, 
+  Message, 
+  Task, 
+  WhatsAppContact, 
+  WhatsAppMessage, 
+  WhatsAppConfig 
+} from '../types';
 
 export const SUPABASE_URL = 'https://qcerpfbyrifbfqnphxdl.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_uRu9qHTmqgXXArJhVBu0xg_icYVr-K4';
@@ -169,5 +176,258 @@ export async function loadUserConversationsFromSupabase(userId: string): Promise
   } catch (err) {
     console.warn('[Supabase Load Exception]:', err);
     return null;
+  }
+}
+
+// ============================================================================
+// MÓDULO DE TAREFAS — PERSISTÊNCIA REAL NO SUPABASE
+// ============================================================================
+
+/**
+ * Carrega tarefas reais do utilizador autenticado a partir do Supabase
+ */
+export async function loadUserTasksFromSupabase(userId: string): Promise<Task[] | null> {
+  if (!userId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      console.warn('[Supabase Load Tasks]:', error?.message);
+      return null;
+    }
+
+    return data.map(t => ({
+      id: t.id,
+      title: t.title,
+      description: t.description || undefined,
+      priority: t.priority as 'alta' | 'media' | 'baixa',
+      status: t.status as 'pendente' | 'em_curso' | 'concluida',
+      dueDate: t.due_date || undefined,
+      createdAt: t.created_at
+    }));
+  } catch (err) {
+    console.warn('[Supabase Load Tasks Exception]:', err);
+    return null;
+  }
+}
+
+/**
+ * Salva ou atualiza uma tarefa no Supabase
+ */
+export async function saveTaskToSupabase(task: Task, userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .upsert({
+        id: task.id,
+        user_id: userId,
+        title: task.title,
+        description: task.description || null,
+        priority: task.priority,
+        status: task.status,
+        due_date: task.dueDate || null,
+        created_at: task.createdAt
+      });
+
+    if (error) {
+      console.warn('[Supabase Task Upsert]:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase Task Exception]:', err);
+    return false;
+  }
+}
+
+/**
+ * Elimina uma tarefa do Supabase
+ */
+export async function deleteTaskFromSupabase(taskId: string, userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.warn('[Supabase Task Delete]:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase Task Delete Exception]:', err);
+    return false;
+  }
+}
+
+// ============================================================================
+// MÓDULO WHATSAPP — PERSISTÊNCIA REAL NO SUPABASE
+// ============================================================================
+
+/**
+ * Carrega contactos reais do utilizador a partir da tabela whatsapp_contacts
+ */
+export async function loadUserWhatsAppContactsFromSupabase(userId: string): Promise<WhatsAppContact[] | null> {
+  if (!userId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('whatsapp_contacts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error || !data) {
+      console.warn('[Supabase Load WA Contacts]:', error?.message);
+      return null;
+    }
+
+    return data.map(c => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone,
+      email: c.email || undefined,
+      unreadCount: c.unread_count || 0,
+      lastMessage: c.last_message || 'Início da conversa',
+      lastMessageTime: c.last_message_time || 'Agora',
+      isGroup: c.is_group || false,
+      tags: c.tags || [],
+      notes: c.notes || undefined
+    }));
+  } catch (err) {
+    console.warn('[Supabase WA Contacts Exception]:', err);
+    return null;
+  }
+}
+
+/**
+ * Salva ou atualiza um contacto no Supabase
+ */
+export async function saveWhatsAppContactToSupabase(contact: WhatsAppContact, userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { error } = await supabase
+      .from('whatsapp_contacts')
+      .upsert({
+        id: contact.id,
+        user_id: userId,
+        name: contact.name,
+        phone: contact.phone,
+        email: contact.email || null,
+        unread_count: contact.unreadCount,
+        last_message: contact.lastMessage,
+        last_message_time: contact.lastMessageTime,
+        is_group: contact.isGroup || false,
+        tags: contact.tags || [],
+        notes: contact.notes || null
+      });
+
+    if (error) {
+      console.warn('[Supabase WA Contact Upsert]:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase WA Contact Exception]:', err);
+    return false;
+  }
+}
+
+/**
+ * Elimina um contacto no Supabase
+ */
+export async function deleteWhatsAppContactFromSupabase(contactId: string, userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { error } = await supabase
+      .from('whatsapp_contacts')
+      .delete()
+      .eq('id', contactId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.warn('[Supabase WA Contact Delete]:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase WA Contact Delete Exception]:', err);
+    return false;
+  }
+}
+
+/**
+ * Carrega mensagens de um contacto a partir da tabela whatsapp_messages
+ */
+export async function loadWhatsAppMessagesForContactFromSupabase(contactId: string, userId: string): Promise<WhatsAppMessage[] | null> {
+  if (!userId || !contactId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('whatsapp_messages')
+      .select('*')
+      .eq('contact_id', contactId)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (error || !data) {
+      console.warn('[Supabase Load WA Messages]:', error?.message);
+      return null;
+    }
+
+    return data.map(m => ({
+      id: m.id,
+      contactId: m.contact_id,
+      sender: m.sender as 'user' | 'contact',
+      text: m.text,
+      timestamp: m.timestamp,
+      reaction: m.reaction || undefined,
+      status: m.status as any,
+      isAiGenerated: m.is_ai_generated || false
+    }));
+  } catch (err) {
+    console.warn('[Supabase Load WA Messages Exception]:', err);
+    return null;
+  }
+}
+
+/**
+ * Salva uma mensagem do WhatsApp no Supabase
+ */
+export async function saveWhatsAppMessageToSupabase(
+  message: WhatsAppMessage,
+  contactId: string,
+  userId?: string
+): Promise<boolean> {
+  if (!userId) return false;
+  try {
+    const { error } = await supabase
+      .from('whatsapp_messages')
+      .upsert({
+        id: message.id,
+        contact_id: contactId,
+        user_id: userId,
+        sender: message.sender,
+        text: message.text,
+        timestamp: message.timestamp,
+        reaction: message.reaction || null,
+        status: message.status || 'delivered',
+        is_ai_generated: message.isAiGenerated || false
+      });
+
+    if (error) {
+      console.warn('[Supabase WA Message Upsert]:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Supabase WA Message Exception]:', err);
+    return false;
   }
 }
