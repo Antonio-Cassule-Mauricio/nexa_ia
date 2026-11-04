@@ -17,6 +17,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
@@ -39,12 +40,29 @@ app.use(express.json());
 // CONFIGURAÇÃO DE CREDENCIAIS E MOTORES DE INTELIGÊNCIA ARTIFICIAL
 // ============================================================================
 
-// Chave da API Qwen fornecida pelo utilizador com fallback seguro
-const QWEN_API_KEY = process.env.QWEN_API_KEY || "sk-ws-H.DILIRYM.5BFi.MEUCIQDTsN9sFkCY-Q8A5ay9uyOukiyhww9a-zSY_88kRs9ryAIgL28RToofPRUY994XCnJZ4LpZ4c6Vn1VuadWUqDwREBw";
+// ⚠️ SEGURANÇA: As chaves de API são EXCLUSIVAMENTE lidas do ambiente (.env / Vercel).
+// Se uma chave hardcoded for detetada no ambiente, o servidor recusa-se a arrancar
+// e obriga à rotação imediata da chave comprometida.
+const FORBIDDEN_HARDCODED_KEYS = [
+  'sk-ws-H.DILIRYM', // antiga chave Qwen exposta no código — ROTACIONADA
+  'AQ.Ab8RN6IXtWk'  // antiga chave Gemini exposta no código — ROTACIONADA
+];
+for (const bad of FORBIDDEN_HARDCODED_KEYS) {
+  if ((process.env.QWEN_API_KEY || '').includes(bad) || (process.env.GEMINI_API_KEY || '').includes(bad)) {
+    console.error('[SEGURANÇA] Foi detetada uma chave comprometida no ambiente. Rotaciona a chave no painel do fornecedor e atualiza o .env. O arranque foi bloqueado.');
+    process.exit(1);
+  }
+}
+
+// Chave da API Qwen — obrigatória via .env (sem fallback hardcoded)
+const QWEN_API_KEY = process.env.QWEN_API_KEY || "";
+if (!QWEN_API_KEY) {
+  console.warn('[AVISO] QWEN_API_KEY não definida no .env — o NEXA usará apenas a contingência Gemini ou o motor local.');
+}
 const QWEN_BASE_URL = process.env.QWEN_BASE_URL || "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1";
 
-// Chave da API Gemini utilizada como contingência em caso de oscilação da Qwen
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AQ.Ab8RN6IXtWkXdkZadX-I-LIBSZHKnyY344RrhqlENUXNf_XvKg";
+// Chave da API Gemini utilizada como contingência em caso de oscilação da Qwen — via .env
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
 /**
  * Prompt Oficial de Sistema da Maurícius para o NEXA:
@@ -134,13 +152,17 @@ Mantive o histórico completo da sessão para assegurar máxima coerência nas p
  * Retorna o estado operacional do servidor e dos motores de IA conectados.
  */
 app.get('/api/health', (req, res) => {
+  const qwenReady = !!QWEN_API_KEY;
+  const geminiReady = !!GEMINI_API_KEY;
   res.json({
     status: 'online',
     company: 'Maurícius',
     founder: 'António Cassule Maurício',
     assistant: 'NEXA',
-    engine: 'Qwen 3.8 Max (Ativo)',
-    contingency: 'Gemini AI',
+    // Estado HONESTO dos motores: refletir "Ativo" sem chave configurada seria simulação.
+    engine: qwenReady ? 'Qwen 3.8 Max (Ativo)' : 'Motor local NEXA (QWEN_API_KEY não configurada)',
+    contingency: geminiReady ? 'Gemini AI (Ativa)' : 'Não configurada',
+    whatsappConnected: whatsAppConfig.connected,
     timestamp: new Date().toISOString()
   });
 });
@@ -423,39 +445,106 @@ interface WhatsAppServerConfig {
   totalReceived: number;
 }
 
-let whatsAppConfig: WhatsAppServerConfig = {
-  connected: true,
-  phoneNumber: '+244 923 001 234',
-  instanceName: 'Maurícius NEXA Business Primary',
-  apiMode: 'cloud_api',
-  webhookVerifyToken: 'mauricius_nexa_webhook_2026',
-  autoReplyEnabled: true,
-  autoReplyPrompt: 'És o assistente NEXA da Maurícius (fundada por António Cassule Maurício) no WhatsApp. Responde de forma educada, executiva e prestativa em português.',
-  batteryLevel: 96,
-  lastSync: new Date().toISOString(),
-  totalSent: 142,
-  totalReceived: 98
-};
+// ⚠️ ESTADO REAL, PERSISTENTE E SEM NÚMEROS INVENTADOS:
+// 1. As credenciais Meta (metaAccessToken / metaPhoneNumberId) VÊM DO .env do servidor
+//    e NUNCA são devolvidas ao navegador (mascaradas em todas as respostas HTTP).
+// 2. connected é derivado: só é true se existir token Meta real OU uma ponte Evolution ativa.
+// 3. totalSent/totalReceived começam a ZERO e só contam mensagens efetivamente
+//    enviadas/recebidas — persistidas em disco (data/whatsapp-config.json).
+const WA_CONFIG_FILE = path.resolve(__dirname, 'data', 'whatsapp-config.json');
+
+function loadWhatsAppConfig(): WhatsAppServerConfig {
+  const base: WhatsAppServerConfig = {
+    connected: false,
+    phoneNumber: process.env.WA_PHONE_NUMBER || '',
+    instanceName: 'Maurícius NEXA Business Primary',
+    apiMode: 'cloud_api',
+    metaPhoneNumberId: process.env.WA_META_PHONE_NUMBER_ID || '',
+    metaBusinessAccountId: process.env.WA_META_BUSINESS_ACCOUNT_ID || '',
+    metaAccessToken: process.env.WA_META_ACCESS_TOKEN || '',
+    webhookVerifyToken: process.env.WA_WEBHOOK_VERIFY_TOKEN || 'nexa-wa-' + Math.random().toString(36).slice(2, 10),
+    autoReplyEnabled: false,
+    autoReplyPrompt: 'És o assistente NEXA da Maurícius (fundada por António Cassule Maurício) no WhatsApp. Responde de forma educada, executiva e prestativa em português.',
+    batteryLevel: 0,
+    lastSync: 'Nunca sincronizado',
+    totalSent: 0,
+    totalReceived: 0
+  };
+  try {
+    if (fs.existsSync(WA_CONFIG_FILE)) {
+      const saved = JSON.parse(fs.readFileSync(WA_CONFIG_FILE, 'utf-8'));
+      return { ...base, ...saved }; // estatísticas reais persistidas sobrevivem a reinícios
+    }
+  } catch (e) {
+    console.warn('[WA Config] Ficheiro de estado corrompido, a recomeçar do zero:', e);
+  }
+  return base;
+}
+
+let whatsAppConfig: WhatsAppServerConfig = loadWhatsAppConfig();
+
+/** Escreve o estado (sem segredos) em disco para persistência real */
+function persistWhatsAppConfig() {
+  try {
+    fs.mkdirSync(path.dirname(WA_CONFIG_FILE), { recursive: true });
+    const { metaAccessToken, ...safeState } = whatsAppConfig; // token nunca toca o disco do repo
+    fs.writeFileSync(WA_CONFIG_FILE, JSON.stringify(safeState, null, 2));
+  } catch (e) {
+    console.warn('[WA Config] Falha ao persistir estado:', e);
+  }
+}
+
+/** Remove campos sensíveis antes de qualquer resposta HTTP ao navegador */
+function sanitizeWaConfig(cfg: WhatsAppServerConfig): WhatsAppServerConfig {
+  return {
+    ...cfg,
+    metaAccessToken: cfg.metaAccessToken ? '••••' + cfg.metaAccessToken.slice(-4) : undefined,
+    batteryLevel: 0 // sem telemóvel ligado à plataforma, bateria não existe — não inventar
+  };
+}
+
+/** Recalcula o estado de ligação com base APENAS em credenciais/mensagens reais */
+function refreshConnectionState() {
+  const token = process.env.WA_META_ACCESS_TOKEN || whatsAppConfig.metaAccessToken;
+  const phoneId = process.env.WA_META_PHONE_NUMBER_ID || whatsAppConfig.metaPhoneNumberId;
+  const hasMeta = !!(token && phoneId && !token.startsWith('••••'));
+  const hasBridge = !!process.env.EVOLUTION_API_URL;
+  whatsAppConfig.connected = hasMeta || hasBridge;
+  if (whatsAppConfig.connected && !whatsAppConfig.phoneNumber) {
+    whatsAppConfig.phoneNumber = process.env.WA_PHONE_NUMBER || '';
+  }
+  whatsAppConfig.lastSync = new Date().toISOString();
+}
+refreshConnectionState();
 
 /**
  * ROTA: GET /api/whatsapp/config
- * Retorna as configurações ativas da integração WhatsApp
+ * Retorna as configurações ativas da integração WhatsApp (credenciais mascaradas)
  */
 app.get('/api/whatsapp/config', (req, res) => {
-  res.json(whatsAppConfig);
+  refreshConnectionState();
+  res.json(sanitizeWaConfig(whatsAppConfig));
 });
 
 /**
  * ROTA: POST /api/whatsapp/config
- * Atualiza parâmetros de conexão (Tokens Meta, Modo de Operação, Auto-Resposta)
+ * Atualiza parâmetros de conexão. Um token enviado aqui substitui apenas o valor
+ * em memória deste processo — para produção define-se via .env no servidor.
  */
 app.post('/api/whatsapp/config', (req, res) => {
+  const incoming = req.body || {};
+  // Nunca aceitar apagar silenciosamente o token do .env com um valor mascarado
+  if (typeof incoming.metaAccessToken === 'string' && incoming.metaAccessToken.startsWith('••••')) {
+    delete incoming.metaAccessToken;
+  }
   whatsAppConfig = {
     ...whatsAppConfig,
-    ...req.body,
+    ...incoming,
     lastSync: new Date().toISOString()
   };
-  res.json({ status: 'ok', config: whatsAppConfig });
+  refreshConnectionState();
+  persistWhatsAppConfig();
+  res.json({ status: 'ok', config: sanitizeWaConfig(whatsAppConfig) });
 });
 
 /**
@@ -500,7 +589,8 @@ app.get('/api/whatsapp/webhook', (req, res) => {
   res.status(200).json({
     status: 'online',
     message: 'Endpoint de Webhook WhatsApp da Maurícius pronto para receber notificações Meta.',
-    verifyToken: whatsAppConfig.webhookVerifyToken
+    // NOTA: o verify token é um segredo de configuração — nunca devolvê-lo por HTTP.
+    verifyTokenConfigured: !!whatsAppConfig.webhookVerifyToken
   });
 });
 
@@ -513,9 +603,6 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
   try {
     const body = req.body;
     console.log('[Meta WhatsApp Webhook Recebido]:', JSON.stringify(body).slice(0, 300));
-
-    // Incrementar contagem de mensagens recebidas
-    whatsAppConfig.totalReceived += 1;
 
     // Extrair dados da mensagem conforme padrão oficial da Meta Cloud API
     let from = '';
@@ -532,6 +619,43 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       from = body.from;
       messageText = body.text;
       contactName = body.name || from;
+    }
+
+    // ⚠️ Verificação de autenticidade: sem assinatura X-Hub-Signature-256 válida
+    // (app secret Meta), NÃO aceitamos payloads como tráfego real — rejeitamos 401.
+    // Assim as estatísticas nunca são inflacionadas por pedidos externos aleatórios.
+    const appSecret = process.env.WA_META_APP_SECRET;
+    const signature = req.headers['x-hub-signature-256'] as string | undefined;
+    const isMetaPayload = !!body.entry;
+    if (isMetaPayload) {
+      if (!appSecret || !signature) {
+        console.warn('[WA Webhook] Payload Meta sem assinatura/secret — rejeitado.');
+        return res.status(401).json({ error: 'Webhook não autenticado: falta X-Hub-Signature-256 ou WA_META_APP_SECRET.' });
+      }
+      const crypto = await import('crypto');
+      const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(JSON.stringify(body)).digest('hex');
+      const a = Buffer.from(expected);
+      const b = Buffer.from(signature);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        console.warn('[WA Webhook] Assinatura inválida — rejeitado.');
+        return res.status(401).json({ error: 'Assinatura do webhook inválida.' });
+      }
+    }
+
+    // Só incrementamos a receção quando há efetivamente uma mensagem extraída
+    if (messageText.trim()) {
+      whatsAppConfig.totalReceived += 1;
+      persistWhatsAppConfig();
+      liveWhatsAppLogs.unshift({
+        id: `wa-recv-${Date.now()}`,
+        from,
+        name: contactName,
+        text: messageText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'incoming',
+        provider: isMetaPayload ? 'meta_cloud_api' : 'webhook_direct'
+      });
+      persistWhatsAppFeed();
     }
 
     let aiReply: string | null = null;
@@ -557,22 +681,45 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           const chatData = await chatRes.json();
           aiReply = chatData.reply;
 
-          // Se tiver credenciais reais da Meta, despachar a resposta de volta ao WhatsApp
-          if (whatsAppConfig.metaPhoneNumberId && whatsAppConfig.metaAccessToken && from) {
-            await fetch(`https://graph.facebook.com/v21.0/${whatsAppConfig.metaPhoneNumberId}/messages`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${whatsAppConfig.metaAccessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                to: from,
-                type: 'text',
-                text: { body: aiReply }
-              })
-            });
-            whatsAppConfig.totalSent += 1;
+          // Despachar a resposta de volta ao WhatsApp APENAS se a Meta confirmar receção
+          const replyToken = process.env.WA_META_ACCESS_TOKEN || whatsAppConfig.metaAccessToken;
+          const replyPhoneId = process.env.WA_META_PHONE_NUMBER_ID || whatsAppConfig.metaPhoneNumberId;
+          if (replyToken && !replyToken.startsWith('••••') && replyPhoneId && from) {
+            try {
+              const sendRes = await fetch(`https://graph.facebook.com/v21.0/${replyPhoneId}/messages`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${replyToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  to: from,
+                  type: 'text',
+                  text: { body: aiReply }
+                })
+              });
+              if (sendRes.ok) {
+                // Contamos e registamos apenas envios CONFIRMADOS pela plataforma
+                whatsAppConfig.totalSent += 1;
+                persistWhatsAppConfig();
+                liveWhatsAppLogs.unshift({
+                  id: `wa-auto-${Date.now()}`,
+                  from,
+                  name: contactName,
+                  text: messageText,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  type: 'outgoing',
+                  aiReply: aiReply || undefined,
+                  provider: 'meta_cloud_api'
+                });
+                persistWhatsAppFeed();
+              } else {
+                console.warn('[WA AutoReply] Meta rejeitou o envio:', sendRes.status);
+              }
+            } catch (sendErr) {
+              console.warn('[WA AutoReply] Falha de rede no envio:', sendErr);
+            }
           }
         }
       } catch (aiErr) {
@@ -604,24 +751,40 @@ interface LiveWhatsAppLog {
   provider: string;
 }
 
-const liveWhatsAppLogs: LiveWhatsAppLog[] = [
-  {
-    id: 'wam-init-1',
-    from: '+244 923 000 111',
-    name: 'Dr. Carlos Silva',
-    text: 'Olá António! Gostaria de alinhar a automação com a IA da Maurícius.',
-    timestamp: new Date(Date.now() - 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    type: 'incoming',
-    aiReply: 'Olá Dr. Carlos Silva! Com certeza, a Maurícius projeta ecossistemas de IA integrados ao WhatsApp. Quando podemos agendar uma chamada executiva?',
-    provider: 'meta_cloud_api'
-  }
-];
+// Feed APENAS com mensagens reais (webhooks Meta / envios confirmados).
+// Começa vazio — é alimentado em runtime e persistido em data/whatsapp-feed.json.
+const WA_FEED_FILE = path.resolve(__dirname, 'data', 'whatsapp-feed.json');
 
+function loadWhatsAppFeed(): LiveWhatsAppLog[] {
+  try {
+    if (fs.existsSync(WA_FEED_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(WA_FEED_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('[WA Feed] Ficheiro corrompido, a recomeçar vazio:', e);
+  }
+  return [];
+}
+
+const liveWhatsAppLogs: LiveWhatsAppLog[] = loadWhatsAppFeed();
+
+function persistWhatsAppFeed() {
+  try {
+    fs.mkdirSync(path.dirname(WA_FEED_FILE), { recursive: true });
+    fs.writeFileSync(WA_FEED_FILE, JSON.stringify(liveWhatsAppLogs.slice(0, 200), null, 2));
+  } catch (e) {
+    console.warn('[WA Feed] Falha ao persistir:', e);
+  }
+}
+
+// Estado REAL da sessão QR: sem ponte Evolution/Baileys configurada via .env,
+// não existe nenhum telemóvel emparelhado — o estado é 'not_configured'.
 let qrSessionState = {
-  status: 'authenticated', // 'ready_to_scan' | 'pairing' | 'authenticated'
-  pairingCode: 'NEXA-9234-MAUR',
-  qrData: '2@vN2hB5z8X...MAURICIUS_NEXA_SESSION_AUTH',
-  lastConnected: new Date().toISOString()
+  status: process.env.EVOLUTION_API_URL ? 'ready_to_scan' : 'not_configured', // 'not_configured' | 'ready_to_scan' | 'pairing' | 'authenticated'
+  pairingCode: '',
+  qrData: '',
+  lastConnected: ''
 };
 
 /**
@@ -629,6 +792,7 @@ let qrSessionState = {
  * Retorna dados estritamente reais do sistema para a Landing Page (sem dados falsos)
  */
 app.get('/api/platform/metrics', (req, res) => {
+  refreshConnectionState();
   res.json({
     status: 'online',
     company: 'Maurícius',
@@ -636,13 +800,14 @@ app.get('/api/platform/metrics', (req, res) => {
     product: 'NEXA Assistant',
     repoUrl: 'https://github.com/Antonio-Cassule-Mauricio/assistente_ia',
     engine: {
-      primary: 'Qwen 3.8 Max (qwen3.8-max)',
-      contingency: 'Gemini 2.5 Flash',
-      status: 'active'
+      primary: QWEN_API_KEY ? 'Qwen 3.8 Max (qwen3.8-max)' : 'Não configurado (definir QWEN_API_KEY)',
+      contingency: GEMINI_API_KEY ? 'Gemini 2.5 Flash' : 'Não configurado (definir GEMINI_API_KEY)',
+      // 'active' só quando existe realmente uma chave de IA configurada no servidor
+      status: (QWEN_API_KEY || GEMINI_API_KEY) ? 'active' : 'not_configured'
     },
     database: {
       provider: 'Supabase PostgreSQL',
-      tables: ['conversations', 'messages', 'whatsapp_contacts', 'whatsapp_messages', 'whatsapp_configs'],
+      tables: ['conversations', 'messages', 'tasks', 'whatsapp_contacts', 'whatsapp_messages', 'whatsapp_configs'],
       rlsEnabled: true,
       region: 'eu-north-1'
     },
@@ -684,16 +849,25 @@ app.get('/api/whatsapp/qr', (req, res) => {
 
 /**
  * ROTA: POST /api/whatsapp/qr/pair
- * Dispara uma nova sessão ou confirma conexão de dispositivo
+ * Gestão honesta da sessão QR: sem uma ponte real (Evolution API / Baileys)
+ * configurada via EVOLUTION_API_URL, NÃO é possível gerar QR nem emparelhar —
+ * a rota devolve 503 em vez de fingir uma conexão inexistente.
  */
-app.post('/api/whatsapp/qr/pair', (req, res) => {
+app.post('/api/whatsapp/qr/pair', async (req, res) => {
+  if (!process.env.EVOLUTION_API_URL) {
+    return res.status(503).json({
+      success: false,
+      error: 'Emparelhamento por QR indisponível: nenhuma ponte WhatsApp (Evolution API/Baileys) configurada no servidor. Liga a Meta Cloud API ou define EVOLUTION_API_URL no .env.'
+    });
+  }
+
   const { action = 'connect' } = req.body;
   if (action === 'refresh') {
     qrSessionState = {
       status: 'ready_to_scan',
       pairingCode: `NEXA-${Math.floor(1000 + Math.random() * 9000)}-MAUR`,
-      qrData: `2@${Math.random().toString(36).substring(2)}...MAURICIUS_NEXA_SESSION`,
-      lastConnected: new Date().toISOString()
+      qrData: '',
+      lastConnected: ''
     };
   } else {
     qrSessionState = {
@@ -708,7 +882,9 @@ app.post('/api/whatsapp/qr/pair', (req, res) => {
 
 /**
  * ROTA: POST /api/whatsapp/send
- * Envio de mensagem pelo WhatsApp para qualquer número (Angola +244, Portugal +351, Brasil +55, etc.)
+ * Envio REAL de mensagem via Meta WhatsApp Cloud API.
+ * ⚠️ Sem credenciais Meta configuradas (WA_META_ACCESS_TOKEN + WA_META_PHONE_NUMBER_ID)
+ * a rota recusa o envio com 503 — nunca finge um "delivered" inexistente.
  */
 app.post('/api/whatsapp/send', async (req, res) => {
   try {
@@ -718,58 +894,69 @@ app.post('/api/whatsapp/send', async (req, res) => {
       return res.status(400).json({ error: 'Campos "to" e "text" são obrigatórios.' });
     }
 
-    const messageId = `wam-${Date.now()}`;
-    whatsAppConfig.totalSent += 1;
+    // Fonte de verdade: credenciais reais do .env do servidor (ou sessão de config)
+    const token = process.env.WA_META_ACCESS_TOKEN || whatsAppConfig.metaAccessToken;
+    const phoneId = process.env.WA_META_PHONE_NUMBER_ID || whatsAppConfig.metaPhoneNumberId;
 
-    // Se houver credenciais oficiais da Meta WhatsApp Cloud API configuradas:
-    if (whatsAppConfig.metaPhoneNumberId && whatsAppConfig.metaAccessToken) {
-      try {
-        const cleanNumber = to.replace(/\D/g, '');
-        const metaRes = await fetch(`https://graph.facebook.com/v21.0/${whatsAppConfig.metaPhoneNumberId}/messages`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${whatsAppConfig.metaAccessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            to: cleanNumber,
-            type: 'text',
-            text: { body: text }
-          })
-        });
-
-        const metaData = await metaRes.json();
-        return res.json({
-          status: 'sent',
-          messageId: metaData.messages?.[0]?.id || messageId,
-          provider: 'meta_cloud_api',
-          metaResponse: metaData
-        });
-      } catch (metaErr: any) {
-        console.warn('[Meta API Send Warning]:', metaErr?.message || metaErr);
-      }
+    if (!token || !phoneId || token.startsWith('••••')) {
+      return res.status(503).json({
+        status: 'not_sent',
+        error: 'WhatsApp não ligado: adiciona WA_META_ACCESS_TOKEN e WA_META_PHONE_NUMBER_ID ao .env do servidor (painel Meta Business) para envios reais.'
+      });
     }
 
-    // Registar no log de mensagens reais da bridge
-    liveWhatsAppLogs.unshift({
-      id: messageId,
-      from: to,
-      name: name || to,
-      text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      type: 'outgoing',
-      provider: whatsAppConfig.metaPhoneNumberId ? 'meta_cloud_api' : 'nexa_direct_bridge'
-    });
+    const messageId = `wam-${Date.now()}`;
 
-    // Modo de envio bem-sucedido via Bridge direta
-    res.json({
-      status: 'delivered',
-      messageId,
-      provider: 'nexa_direct_bridge',
-      to,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    });
+    try {
+      const cleanNumber = to.replace(/\D/g, '');
+      const metaRes = await fetch(`https://graph.facebook.com/v21.0/${phoneId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: cleanNumber,
+          type: 'text',
+          text: { body: text }
+        })
+      });
+
+      const metaData = await metaRes.json();
+
+      if (!metaRes.ok) {
+        return res.status(502).json({
+          status: 'failed',
+          error: 'A API da Meta rejeitou o envio.',
+          metaResponse: metaData
+        });
+      }
+
+      // Só contamos e registamos quando a Meta CONFIRMA a aceitação
+      whatsAppConfig.totalSent += 1;
+      persistWhatsAppConfig();
+      liveWhatsAppLogs.unshift({
+        id: metaData.messages?.[0]?.id || messageId,
+        from: to,
+        name: name || to,
+        text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'outgoing',
+        provider: 'meta_cloud_api'
+      });
+      persistWhatsAppFeed();
+
+      return res.json({
+        status: 'sent',
+        messageId: metaData.messages?.[0]?.id || messageId,
+        provider: 'meta_cloud_api',
+        metaResponse: metaData
+      });
+    } catch (metaErr: any) {
+      console.warn('[Meta API Send Error]:', metaErr?.message || metaErr);
+      return res.status(502).json({ status: 'failed', error: 'Falha de rede ao contactar a API da Meta.' });
+    }
   } catch (err: any) {
     console.error('Erro ao enviar mensagem WhatsApp:', err);
     res.status(500).json({ error: 'Falha no envio da mensagem WhatsApp.' });
@@ -778,13 +965,18 @@ app.post('/api/whatsapp/send', async (req, res) => {
 
 /**
  * ROTA: POST /api/whatsapp/simulate-incoming
- * Permite simular a receção de mensagens reais de clientes para testes do Webhook e da IA
+ * ⚠️ FERRAMENTA DE TESTE (não é tráfego real): executa o pipeline completo do
+ * webhook (receção → IA NEXA → resposta) para validar a automação ANTES de ligar
+ * números reais. As entradas são marcadas como provider='simulator' e NÃO
+ * entram nas estatísticas oficiais totalSent/totalReceived.
  */
 app.post('/api/whatsapp/simulate-incoming', async (req, res) => {
   try {
-    const { from = '+244 923 888 777', name = 'Novo Cliente', text = 'Olá! Gostaria de conhecer as soluções da Maurícius.' } = req.body;
+    const { from = '', name = 'Cliente de Teste', text = '' } = req.body;
 
-    whatsAppConfig.totalReceived += 1;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Escreve uma mensagem de teste em "text".' });
+    }
 
     let aiReply: string | null = null;
     if (whatsAppConfig.autoReplyEnabled) {
@@ -794,7 +986,7 @@ app.post('/api/whatsapp/simulate-incoming', async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: [
-              { role: 'user', content: `[WhatsApp de ${name} (${from})]: "${text}"\nResponde diretamente em português como assistente NEXA da Maurícius.` }
+              { role: 'user', content: `[WhatsApp de ${name || from} (${from})]: "${text}"\nResponde diretamente em português como assistente NEXA da Maurícius.` }
             ],
             systemPrompt: whatsAppConfig.autoReplyPrompt
           })
@@ -810,19 +1002,21 @@ app.post('/api/whatsapp/simulate-incoming', async (req, res) => {
     }
 
     const logEntry: LiveWhatsAppLog = {
-      id: `wa-in-${Date.now()}`,
-      from,
-      name,
+      id: `wa-test-${Date.now()}`,
+      from: from || '+000 000 000 000',
+      name: `${name} (TESTE)`,
       text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       type: 'incoming',
       aiReply: aiReply || undefined,
-      provider: 'meta_cloud_api'
+      provider: 'simulator'
     };
     liveWhatsAppLogs.unshift(logEntry);
+    persistWhatsAppFeed();
 
     res.json({
       success: true,
+      simulated: true, // sinal explícito ao frontend: isto NÃO é uma mensagem recebida de um cliente real
       sender: from,
       name,
       incomingText: text,

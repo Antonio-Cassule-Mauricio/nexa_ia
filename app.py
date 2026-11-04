@@ -22,18 +22,15 @@ import httpx
 load_dotenv()
 
 # Configurações de Variáveis de Ambiente
-QWEN_API_KEY = os.getenv(
-    "QWEN_API_KEY", 
-    "sk-ws-H.DILIRYM.5BFi.MEUCIQDTsN9sFkCY-Q8A5ay9uyOukiyhww9a-zSY_88kRs9ryAIgL28RToofPRUY994XCnJZ4LpZ4c6Vn1VuadWUqDwREBw"
-)
+# ⚠️ SEGURANÇA: chaves lidas APENAS do .env — sem fallback hardcoded no repositório.
+QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
 QWEN_BASE_URL = os.getenv(
     "QWEN_BASE_URL", 
     "https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1"
 )
-GEMINI_API_KEY = os.getenv(
-    "GEMINI_API_KEY",
-    "AQ.Ab8RN6IXtWkXdkZadX-I-LIBSZHKnyY344RrhqlENUXNf_XvKg"
-)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+if not QWEN_API_KEY and not GEMINI_API_KEY:
+    print("[AVISO] Nem QWEN_API_KEY nem GEMINI_API_KEY definidas no .env — a API Python usará apenas o motor local.")
 SUPABASE_URL = os.getenv(
     "SUPABASE_URL", 
     "https://qcerpfbyrifbfqnphxdl.supabase.co"
@@ -251,18 +248,19 @@ class WhatsAppConfigPayload(BaseModel):
     autoReplyPrompt: Optional[str] = None
 
 whatsapp_state = {
-    "connected": True,
-    "phoneNumber": "+244 923 001 234",
+    # Estado REAL derivado do ambiente: ligado apenas se houver credenciais Meta no .env
+    "connected": bool(os.getenv("WA_META_ACCESS_TOKEN") and os.getenv("WA_META_PHONE_NUMBER_ID")),
+    "phoneNumber": os.getenv("WA_PHONE_NUMBER", ""),
     "instanceName": "Maurícius NEXA Business Primary",
     "apiMode": "cloud_api",
-    "metaPhoneNumberId": None,
-    "metaAccessToken": None,
-    "webhookVerifyToken": "mauricius_nexa_webhook_2026",
-    "autoReplyEnabled": True,
+    "metaPhoneNumberId": os.getenv("WA_META_PHONE_NUMBER_ID"),
+    "metaAccessToken": None,  # token nunca é exposto por HTTP
+    "webhookVerifyToken": os.getenv("WA_WEBHOOK_VERIFY_TOKEN", ""),
+    "autoReplyEnabled": False,
     "autoReplyPrompt": "És o assistente executivo NEXA da Maurícius (fundada por António Cassule Maurício) no WhatsApp. Responde em português de forma profissional e prestativa.",
-    "batteryLevel": 96,
-    "totalSent": 142,
-    "totalReceived": 98
+    "batteryLevel": 0,   # sem dispositivo ligado — não inventar bateria
+    "totalSent": 0,      # estatísticas só de tráfego real confirmado
+    "totalReceived": 0
 }
 
 @app.get("/api/whatsapp/config")

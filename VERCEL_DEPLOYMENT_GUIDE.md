@@ -44,10 +44,10 @@ No ecrã de importação da Vercel, expande a secção **"Environment Variables"
 | :--- | :--- | :--- |
 | `VITE_SUPABASE_URL` | `https://qcerpfbyrifbfqnphxdl.supabase.co` | URL da tua instância Supabase |
 | `VITE_SUPABASE_ANON_KEY` | `sb_publishable_uRu9qHTmqgXXArJhVBu0xg_icYVr-K4` | Chave pública anónima com RLS |
-| `QWEN_API_KEY` | `sk-ws-H.DILIRYM.5BFi.MEUCIQDTsN9sFkCY-Q8A5ay9uyOukiyhww9a-zSY_88kRs9ryAIgL28RToofPRUY994XCnJZ4LpZ4c6Vn1VuadWUqDwREBw` | Chave do motor Qwen 3.8 Max |
+| `QWEN_API_KEY` | `<COLA_AQUI_A_TUA_CHAVE_NOVA>` | Chave do motor Qwen 3.8 Max |
 | `QWEN_BASE_URL` | `https://ap-southeast-1.maas.qwencloudapi.com/compatible-mode/v1` | Endpoint compatível OpenAI MaaS |
-| `GEMINI_API_KEY` | `AQ.Ab8RN6IXtWkXdkZadX-I-LIBSZHKnyY344RrhqlENUXNf_XvKg` | Chave de contingência Google AI |
-| `WHATSAPP_VERIFY_TOKEN`| `mauricius_nexa_webhook_2026` | Token de segurança do Webhook |
+| `GEMINI_API_KEY` | `<COLA_AQUI_A_TUA_CHAVE_NOVA>` | Chave de contingência Google AI |
+| `WHATSAPP_VERIFY_TOKEN`| `<TOKEN_ALEATÓRIO_QUE_DEVES_CRIAR>` | Token de segurança do Webhook |
 
 ### Passo 5: Clicar em "Deploy"
 Clica no botão **"Deploy"**. A compilação demora cerca de 45 segundos e o teu site ficará imediatamente disponível com SSL/HTTPS gratuito e CDN global.

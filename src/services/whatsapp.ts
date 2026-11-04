@@ -16,32 +16,49 @@
 import { WhatsAppContact, WhatsAppMessage, WhatsAppConfig } from '../types';
 import { supabase } from './supabase';
 
+// ⚠️ SEM DADOS SIMULADOS: esta configuração inicial reflete o estado REAL do sistema.
+// connected=false até existir um Token de Acesso da Meta configurado (ou uma ponte
+// Evolution API/Baileys ativa). As estatísticas começam a zero e só crescem com
+// mensagens efetivamente enviadas/recebidas pelo backend.
 const DEFAULT_CONFIG: WhatsAppConfig = {
-  connected: true,
-  phoneNumber: '+244 923 001 234',
+  connected: false,
+  phoneNumber: '',
   instanceName: 'Maurícius NEXA Business Primary',
   apiMode: 'cloud_api',
-  webhookVerifyToken: 'mauricius_nexa_webhook_2026',
-  autoReplyEnabled: true,
+  // Token gerado por dispositivo e persistido — mostrá-lo no painel é seguro porque
+  // só o dono da sessão o conhece; ao ligar a Meta Cloud API, define-se o mesmo valor
+  // no painel Business Manager na secção Webhook.
+  webhookVerifyToken: localStorage.getItem('nexa_wa_verify_token') || (() => {
+    const t = 'nexa-wa-' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('nexa_wa_verify_token', t);
+    return t;
+  })(),
+  autoReplyEnabled: false,
   autoReplyPrompt: 'És o NEXA no WhatsApp da Maurícius. Responde com educação, objetividade executiva em português e ajuda o cliente.',
-  batteryLevel: 94,
-  lastSync: 'Sincronizado agora',
-  totalSent: 142,
-  totalReceived: 98
+  batteryLevel: 0,
+  lastSync: 'Nunca sincronizado',
+  totalSent: 0,
+  totalReceived: 0
 };
 
 /**
- * Obtém a configuração ativa do WhatsApp
+ * Obtém a configuração ativa do WhatsApp.
+ * O backend é a fonte de verdade (config persistida no servidor); o localStorage
+ * serve apenas como cache offline para quando o Express não está acessível.
  */
 export async function getWhatsAppConfig(): Promise<WhatsAppConfig> {
   try {
     const res = await fetch('/api/whatsapp/config');
     if (res.ok) {
       const data = await res.json();
-      return { ...DEFAULT_CONFIG, ...data };
+      // Remove campos hardcoded fictícios do servidor antigo (batteryLevel inventado)
+      const merged: WhatsAppConfig = { ...DEFAULT_CONFIG, ...data };
+      if (!merged.phoneNumber) merged.connected = false;
+      localStorage.setItem('mauricius_wa_config', JSON.stringify(merged));
+      return merged;
     }
   } catch (err) {
-    console.warn('[WhatsApp Service] Não foi possível obter config do servidor, a usar local:', err);
+    console.warn('[WhatsApp Service] Backend indisponível, a usar cache local:', err);
   }
 
   const saved = localStorage.getItem('mauricius_wa_config');
