@@ -461,7 +461,8 @@ export const NexaConnectorsSection: React.FC<NexaConnectorsSectionProps> = ({
 
                 <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                   <p className="font-bold text-emerald-300">Token de Verificação:</p>
-                  <code className="text-[11px] text-emerald-200 font-mono">mauricius_nexa_webhook_2026</code>
+                  {/* Valor REAL lido da configuração do backend (por dispositivo), nunca um segredo partilhado no código */}
+                  <code className="text-[11px] text-emerald-200 font-mono break-all select-all">{config.webhookVerifyToken}</code>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
