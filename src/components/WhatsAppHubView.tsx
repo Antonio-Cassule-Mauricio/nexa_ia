@@ -105,11 +105,43 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
-  // Carregar configurações reais do backend na montagem
+  const [showCrmDrawer, setShowCrmDrawer] = useState(false);
+  const [crmLeadStatus, setCrmLeadStatus] = useState<'novo' | 'em_negociacao' | 'proposta' | 'fechado'>('em_negociacao');
+  const [crmDealValue, setCrmDealValue] = useState('1.500.000 Kz');
+
+  // Carregar configurações reais do backend e escutar feed de mensagens
   useEffect(() => {
-    getWhatsAppConfig().then(cfg => {
-      if (cfg) setConfig(cfg);
-    });
+    let active = true;
+
+    const pollLiveFeed = async () => {
+      try {
+        const [cfg, feedRes] = await Promise.all([
+          getWhatsAppConfig(),
+          fetch('/api/whatsapp/feed')
+        ]);
+        if (!active) return;
+        if (cfg) setConfig(cfg);
+        if (feedRes.ok) {
+          const feedData = await feedRes.json();
+          if (feedData?.stats) {
+            setConfig(prev => ({
+              ...prev,
+              totalSent: feedData.stats.sent,
+              totalReceived: feedData.stats.received
+            }));
+          }
+        }
+      } catch (err) {
+        // silencioso
+      }
+    };
+
+    pollLiveFeed();
+    const timer = setInterval(pollLiveFeed, 6000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, []);
 
   // Contacto ativo selecionado
@@ -486,6 +518,20 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
                     <span>Extrair Tarefas</span>
                   </button>
 
+                  {/* CRM Readiness & Lead */}
+                  <button
+                    onClick={() => setShowCrmDrawer(!showCrmDrawer)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                      showCrmDrawer
+                        ? 'bg-purple-600 text-white border-purple-500 shadow-xs'
+                        : 'bg-purple-500/10 text-purple-700 dark:text-purple-400 hover:bg-purple-500/20 border-purple-500/20'
+                    }`}
+                    title="Abrir painel de gestão de CRM e negócio com este contacto"
+                  >
+                    <Users className="w-3 h-3" />
+                    <span>CRM & Lead</span>
+                  </button>
+
                   {/* Exportar Conversa */}
                   <button
                     onClick={handleExportChat}
@@ -512,85 +558,190 @@ export const WhatsAppHubView: React.FC<WhatsAppHubViewProps> = ({
                 </div>
               </div>
 
-              {/* Feed de Mensagens do Chat WhatsApp */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
-                {activeMessages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
-                    <MessageSquare className="w-8 h-8 text-slate-300 dark:text-slate-700" />
-                    <p className="text-xs">Ainda não existem mensagens com este contacto.</p>
-                    <p className="text-[11px] text-slate-500">Envia uma mensagem abaixo ou simula uma entrada para testar o NEXA.</p>
-                  </div>
-                ) : (
-                  activeMessages.map((msg) => {
-                    const isUser = msg.sender === 'user';
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
-                      >
-                        <div className={`relative max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-xs transition-all ${
-                          isUser
-                            ? 'bg-emerald-700 text-white rounded-tr-none'
-                            : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-800'
-                        }`}>
-                          {/* Badge de Resposta da IA */}
-                          {msg.isAiGenerated && (
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-200 dark:text-emerald-400 mb-1 border-b border-emerald-600/40 pb-0.5">
-                              <Bot className="w-3 h-3" />
-                              <span>Resposta Automática NEXA (Qwen 3.8 Max)</span>
-                            </div>
-                          )}
+              {/* Área Central: Mensagens + Painel CRM Opcional */}
+              <div className="flex-1 flex overflow-hidden">
+                {/* Feed de Mensagens do Chat WhatsApp */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px]">
+                  {activeMessages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
+                      <MessageSquare className="w-8 h-8 text-slate-300 dark:text-slate-700" />
+                      <p className="text-xs">Ainda não existem mensagens com este contacto.</p>
+                      <p className="text-[11px] text-slate-500">Envia uma mensagem abaixo ou simula uma entrada para testar o NEXA.</p>
+                    </div>
+                  ) : (
+                    activeMessages.map((msg) => {
+                      const isUser = msg.sender === 'user';
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
+                        >
+                          <div className={`relative max-w-md rounded-2xl px-4 py-2.5 text-xs shadow-xs transition-all ${
+                            isUser
+                              ? 'bg-emerald-700 text-white rounded-tr-none'
+                              : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-200 dark:border-slate-800'
+                          }`}>
+                            {/* Badge de Resposta da IA */}
+                            {msg.isAiGenerated && (
+                              <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-200 dark:text-emerald-400 mb-1 border-b border-emerald-600/40 pb-0.5">
+                                <Bot className="w-3 h-3" />
+                                <span>Resposta Automática NEXA (Qwen 3.8 Max)</span>
+                              </div>
+                            )}
 
-                          <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                          
-                          <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] opacity-80">
-                            <span>{msg.timestamp}</span>
-                            {isUser && (
-                              <CheckCheck className={`w-3.5 h-3.5 ${msg.status === 'read' ? 'text-cyan-300' : 'text-emerald-200'}`} />
+                            <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                            
+                            <div className="flex items-center justify-end gap-1.5 mt-1 text-[10px] opacity-80">
+                              <span>{msg.timestamp}</span>
+                              {isUser && (
+                                <CheckCheck className={`w-3.5 h-3.5 ${msg.status === 'read' ? 'text-cyan-300' : 'text-emerald-200'}`} />
+                              )}
+                            </div>
+
+                            {msg.reaction && (
+                              <span className="absolute -bottom-2 -right-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full px-1.5 py-0.2 text-[10px] shadow-xs">
+                                {msg.reaction}
+                              </span>
                             )}
                           </div>
 
-                          {msg.reaction && (
-                            <span className="absolute -bottom-2 -right-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full px-1.5 py-0.2 text-[10px] shadow-xs">
-                              {msg.reaction}
-                            </span>
-                          )}
+                          {/* Gatilhos de Reação Rápida */}
+                          <div className="flex items-center gap-1 mt-1 opacity-0 hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleQuickReaction(msg.id, '✅')}
+                              className="text-[10px] text-slate-400 hover:text-emerald-500 p-0.5"
+                              title="Marcar como Concluído ✅"
+                            >
+                              ✅
+                            </button>
+                            <button
+                              onClick={() => handleQuickReaction(msg.id, '⏳')}
+                              className="text-[10px] text-slate-400 hover:text-amber-500 p-0.5"
+                              title="Marcar como Em Análise ⏳"
+                            >
+                              ⏳
+                            </button>
+                            <button
+                              onClick={() => handleQuickReaction(msg.id, '👍')}
+                              className="text-[10px] text-slate-400 hover:text-blue-500 p-0.5"
+                              title="Confirmar 👍"
+                            >
+                              👍
+                            </button>
+                            <button
+                              onClick={() => handleQuickReaction(msg.id, '🔥')}
+                              className="text-[10px] text-slate-400 hover:text-orange-500 p-0.5"
+                              title="Destaque 🔥"
+                            >
+                              🔥
+                            </button>
+                          </div>
                         </div>
+                      );
+                    })
+                  )}
+                </div>
 
-                        {/* Gatilhos de Reação Rápida */}
-                        <div className="flex items-center gap-1 mt-1 opacity-0 hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleQuickReaction(msg.id, '✅')}
-                            className="text-[10px] text-slate-400 hover:text-emerald-500 p-0.5"
-                            title="Marcar como Concluído ✅"
-                          >
-                            ✅
-                          </button>
-                          <button
-                            onClick={() => handleQuickReaction(msg.id, '⏳')}
-                            className="text-[10px] text-slate-400 hover:text-amber-500 p-0.5"
-                            title="Marcar como Em Análise ⏳"
-                          >
-                            ⏳
-                          </button>
-                          <button
-                            onClick={() => handleQuickReaction(msg.id, '👍')}
-                            className="text-[10px] text-slate-400 hover:text-blue-500 p-0.5"
-                            title="Confirmar 👍"
-                          >
-                            👍
-                          </button>
-                          <button
-                            onClick={() => handleQuickReaction(msg.id, '🔥')}
-                            className="text-[10px] text-slate-400 hover:text-orange-500 p-0.5"
-                            title="Destaque 🔥"
-                          >
-                            🔥
-                          </button>
-                        </div>
+                {/* Painel Lateral de CRM & Lead (Prontidão Fase 8) */}
+                {showCrmDrawer && (
+                  <div className="w-72 sm:w-80 border-l border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm overflow-y-auto p-4 space-y-4 shrink-0 transition-all">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                          Prontidão CRM • Fase 8
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">Perfil do Cliente & Lead</h4>
                       </div>
-                    );
-                  })
+                      <button
+                        onClick={() => setShowCrmDrawer(false)}
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Dados Básicos */}
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Nome / Organização:</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100">{activeContact.name}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Telefone WhatsApp:</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400">{activeContact.phone}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Etiqueta:</span>
+                        <span className="inline-block px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 text-[10px] font-semibold border border-emerald-500/20">
+                          {activeContact.tags?.[0] || 'Cliente'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Estado do Lead */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                        Fase do Pipeline:
+                      </label>
+                      <select
+                        value={crmLeadStatus}
+                        onChange={(e: any) => setCrmLeadStatus(e.target.value)}
+                        className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+                      >
+                        <option value="novo">Novo Lead / Prospeção</option>
+                        <option value="em_negociacao">Em Qualificação / Conversação</option>
+                        <option value="proposta">Proposta Comercial Enviada</option>
+                        <option value="fechado">Negócio Fechado / Cliente Ativo</option>
+                      </select>
+                    </div>
+
+                    {/* Valor Potencial */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                        Valor Estimado do Projeto:
+                      </label>
+                      <input
+                        type="text"
+                        value={crmDealValue}
+                        onChange={(e) => setCrmDealValue(e.target.value)}
+                        placeholder="Ex: 2.000.000 Kz"
+                        className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Notas do Cliente */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+                        Notas Operacionais:
+                      </label>
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                        {activeContact.notes || 'Interesse em automação de processos e agentes de IA multicanal da Maurícius.'}
+                      </div>
+                    </div>
+
+                    {/* Ações Inteligentes com NEXA */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                      <button
+                        onClick={() => {
+                          setInputText(`Olá ${activeContact.name}! Conforme o alinhamento da Maurícius, elaborei a minuta da proposta no valor de ${crmDealValue}. Segue para a vossa validação.`);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Preprar Proposta Comercial</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          onExtractTasksFromThreadWithNexa(activeContact.name, activeMessages);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <ListPlus className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Agendar Tarefa de Follow-up</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 

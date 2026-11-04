@@ -587,6 +587,11 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       aiReply
     });
   } catch (err: any) {
+    console.error('[WhatsApp Webhook Error]:', err);
+    res.status(500).json({ error: 'Erro ao processar webhook WhatsApp' });
+  }
+});
+
 // Buffer de mensagens reais da ponte WhatsApp (Recebidas via Webhook e Enviadas)
 interface LiveWhatsAppLog {
   id: string;
