@@ -58,29 +58,29 @@ export async function getPlatformMetrics() {
     return await res.json();
   } catch (err) {
     return {
-      status: 'online',
+      status: 'offline',
       company: 'Maurícius',
       founder: 'António Cassule Maurício',
       product: 'NEXA Assistant',
       repoUrl: 'https://github.com/Antonio-Cassule-Mauricio/assistente_ia',
       engine: {
-        primary: 'Qwen 3.8 Max (qwen3.8-max)',
-        contingency: 'Gemini 2.5 Flash',
-        status: 'active'
+        primary: 'Servidor desconectado',
+        contingency: 'Modo autónomo',
+        status: 'offline'
       },
       database: {
         provider: 'Supabase PostgreSQL',
-        tables: ['conversations', 'messages', 'whatsapp_contacts', 'whatsapp_messages', 'whatsapp_configs'],
+        tables: ['conversations', 'messages', 'tasks', 'whatsapp_contacts', 'whatsapp_messages', 'whatsapp_configs'],
         rlsEnabled: true,
         region: 'eu-north-1'
       },
       whatsapp: {
-        connected: true,
-        instance: 'Maurícius NEXA Business Primary',
-        phone: '+244 923 001 234',
-        totalSent: 142,
-        totalReceived: 98,
-        autoReply: true
+        connected: false,
+        instance: 'NEXA WhatsApp Hub',
+        phone: '',
+        totalSent: 0,
+        totalReceived: 0,
+        autoReply: false
       }
     };
   }

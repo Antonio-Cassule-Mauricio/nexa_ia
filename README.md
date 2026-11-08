@@ -1,166 +1,120 @@
-# 🚀 Maurícius Tech & NEXA AI Platform
+# 🚀 NEXA Assistant & Plataforma Maurícius (100% Real & Produção)
 
-Plataforma corporativa futurista e ecossistema de Inteligência Artificial multicanal da startup **Maurícius**, apresentando o seu produto flagship **NEXA** (estilo Zapia e ChatGPT), com suporte integrado a LLMs de ponta (**Qwen 3.8 Max**, **Google Gemini**), autenticação e banco de dados **Supabase**, e simulação avançada de integração **WhatsApp**.
-
----
-
-## 🏢 1. Contexto da Startup
-- **Empresa:** Maurícius (Startup de Soluções Digitais, Automação e IA)
-- **Fundador:** António Cassule Maurício
-- **Proposta de Valor:** Desenvolvimento de ecossistemas digitais de alta performance, automação inteligente de processos corporativos e agentes de IA conversacionais multicanal (Web + WhatsApp).
-- **Produto Flagship:** **NEXA** — Assistente pessoal e executivo de elite, capaz de resumir conversas, transcrever áudio, gerir tarefas e conectar fluxos de trabalho.
-- **Repositório Oficial:** `https://github.com/Antonio-Cassule-Mauricio/assistente_ia/`
+Assistente Pessoal e Corporativo com Inteligência Artificial multicanal da startup **Maurícius**, fundada por **António Cassule Maurício**. 
+Esta versão foi completamente limpa de dados fictícios, mocks e simulações, operando com **conectividade real via WhatsApp (Baileys Multi-Device)**, integração com modelos de linguagem (**Qwen 3.8 Max** via DashScope/OpenAI API e **Google Gemini**), autenticação segura com **Supabase** e persistência completa.
 
 ---
 
-## 💎 2. Arquitetura da Plataforma
+## 📱 1. Conexão Real ao WhatsApp Pessoal (Agora Mesmo)
 
-O projeto oferece uma arquitetura moderna e versátil:
+O NEXA inclui um conector nativo WebSocket via protocolo Baileys Multi-Device. Pode emparelhar o seu telemóvel pessoal sem precisar de aprovação da Meta nem de servidores pagos de terceiros:
 
-### A. Aplicação Web Completa (React + TypeScript + Tailwind CSS + Node.js/Express)
-1. **Landing Page Corporativa da Maurícius (`/`)**:
-   - Visual futurista de alto nível com tema escuro (Dark) e claro (Light) configuráveis.
-   - Foco na proposta de valor empresarial: ecossistemas digitais, agentes de IA e engenharia escalável.
-   - Apresentação da liderança e visão do fundador **António Cassule Maurício** na seção dedicada de liderança.
-   - Navegação direta para o site exclusivo do NEXA e para o Workspace.
+### Método A: Ler QR Code (No Navegador)
+1. Inicie a aplicação (`npm run dev` ou aceda ao servidor).
+2. No menu lateral do Workspace, clique em **"Hub WhatsApp"** (ícone do WhatsApp).
+3. Selecione a aba **"QR Code (Escanear)"**.
+4. Abra o WhatsApp no seu telemóvel:
+   - **Android**: Toque nos 3 pontos verticais `⋮` no canto superior direito > **Dispositivos Conectados** > **Conectar um dispositivo**.
+   - **iPhone (iOS)**: Vá em **Definições / Ajustes** > **Aparelhos Conectados** > **Conectar um aparelho**.
+5. Aponte a câmara do telemóvel para o QR Code gerado no ecrã.
+6. A sessão conecta-se imediatamente e o status mudará para `Sessão ativa e sincronizada`.
+7. O token de sessão é guardado em segurança na pasta local `data/wa-auth/`.
 
-2. **Site Exclusivo do NEXA (Estilo Zapia.com)**:
-   - Apresentação completa do produto, destacando a criação pela Maurícius.
-   - Vitrine de capacidades: Transcrição de áudios, pesquisa web em tempo real, extração de tarefas e rascunhos executivos.
-   - Simulador interativo de WhatsApp em formato de telemóvel para demonstração em tempo real.
-   - Botão no canto superior direito para entrar com conta Google / Supabase ou aceder ao Workspace.
-
-3. **NEXA Workspace (`/workspace`)**:
-   - Interface conversacional intuitiva (estilo Zapia / ChatGPT).
-   - Conexão em tempo real ao motor **Qwen 3.8 Max** (`qwen3.8-max`) com redundância inteligente para **Google Gemini** e motor semântico em português.
-   - Painel integrado de Gestão de Tarefas (Kanban/Listas).
-   - Hub de integração multicanal com WhatsApp (sincronização, resumos e rascunho de respostas).
-   - Modal de autenticação integrado com Supabase e suporte a modo convidado.
-
-### B. Versão Alternativa em Python (FastAPI + Jinja2 Templates)
-- Ficheiro `app.py` com rotas assíncronas em FastAPI, consumo da OpenAI API compatível com o endpoint Qwen e integração Supabase.
-- Templates prontos em `templates/index.html` e `templates/chat.html`.
-- Ficheiro `requirements.txt` para deploy direto em servidores Python.
+### Método B: Código de Emparelhamento (8 Dígitos - Sem Câmara)
+1. No **Hub WhatsApp**, selecione a aba **"Código de Emparelhamento (8 dígitos)"**.
+2. Digite o seu número de telemóvel no formato internacional (ex.: `244923456789` ou `5511999999999`).
+3. Clique em **"Pedir Código de 8 Dígitos"**.
+4. No seu WhatsApp no telemóvel, abra a notificação de dispositivo conectado ou vá a **Aparelhos Conectados > Conectar com número de telefone** e introduza o código de 8 dígitos exibido.
 
 ---
 
-## 🗄️ 3. Configuração da Base de Dados (Supabase PostgreSQL)
+## 🛡️ 2. Arquitetura de Segurança Implementada
 
-Aceda ao **SQL Editor** do seu painel Supabase (`https://qcerpfbyrifbfqnphxdl.supabase.co`) e execute o script que se encontra no ficheiro `supabase_schema.sql`:
-
-```sql
--- Criação da tabela de conversas
-CREATE TABLE IF NOT EXISTS public.conversations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    title TEXT NOT NULL DEFAULT 'Nova Conversa',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
-
--- Criação da tabela de mensagens
-CREATE TABLE IF NOT EXISTS public.messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE NOT NULL,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
-    content TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
-
--- Ativação de Row Level Security (RLS)
-ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-
--- Políticas de segurança: o utilizador apenas acede aos seus próprios registos
-CREATE POLICY "Utilizadores gerem as suas conversas"
-    ON public.conversations FOR ALL
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Utilizadores gerem as suas mensagens"
-    ON public.messages FOR ALL
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-```
+- **Zero Mocks**: Todas as simulações (`setTimeout` de respostas falsas, métricas forjadas de mensagens, utilizador de teste pré-logado) foram completamente eliminadas.
+- **Proteção de Cabeçalhos HTTP (Helmet)**: X-Frame-Options, DNS Prefetch Control, Referrer Policy e mitigação de clickjacking.
+- **Rate Limiting**: Proteção contra ataques de negação de serviço e força bruta nos endpoints de chat (`/api/chat`) e de envio de mensagens (`/api/whatsapp/send`).
+- **Sanitização & Validação**: Validação estrita de formato de números internacionais de telefone, higienização de payload JSON e CORS restrito a requisições de origem cruzada válidas.
+- **Persistência de Sessões Segura**: As credenciais Baileys são gravadas em `data/wa-auth/` (adicionada ao `.gitignore`), impedindo vazamento de tokens no repositório Git.
+- **Tratamento Seguro de Erros**: O servidor nunca expõe stack traces detalhados ou variáveis de ambiente a clientes em caso de falha.
 
 ---
 
-## ⚡ 4. Como Executar Localmente
+## ⚙️ 3. Variáveis de Ambiente (`.env`)
 
-### Opção 1: Aplicação Web React + Node.js (Recomendada)
-1. Instale as dependências:
-   ```bash
-   npm install
-   ```
-2. Inicie o servidor:
-   ```bash
-   npm run dev
-   ```
-3. Aceda no navegador a `http://localhost:3000`.
+Crie o seu ficheiro `.env` na raiz do projeto com base no ficheiro de modelo `.env.example`:
 
-### Opção 2: Backend Python (FastAPI)
-1. Crie um ambiente virtual e instale os requisitos:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # No Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-2. Inicie o servidor FastAPI:
-   ```bash
-   python app.py
-   # ou: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-   ```
-3. Aceda a `http://localhost:8000`.
-
----
-
-## 🔄 5. Passo a Passo para Fazer Commit e Push no GitHub
-
-Para sincronizar todas as novas alterações com o repositório oficial da startup no GitHub:
-
-### Passo 1: Verificar o estado do repositório
-No terminal da raiz do projeto, execute:
 ```bash
-git status
-```
+# Servidor
+PORT=3000
+NODE_ENV=development
 
-### Passo 2: Adicionar todos os ficheiros criados e atualizados
-```bash
-git add .
-```
+# Inteligência Artificial - Qwen (DashScope / Tongyi / Alibaba Cloud)
+# Obtenha em: https://dashscope.console.aliyun.com/
+QWEN_API_KEY=sua_chave_qwen_aqui
+QWEN_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen3.8-max
 
-### Passo 3: Criar o commit com uma mensagem descritiva
-```bash
-git commit -m "feat: reestruturação completa da plataforma Maurícius e assistente NEXA (React, FastAPI, Qwen 3.8 Max, Supabase)"
-```
+# Inteligência Artificial - Google Gemini (Fallback ou Motor Secundário)
+# Obtenha em: https://aistudio.google.com/
+GEMINI_API_KEY=sua_chave_gemini_aqui
 
-### Passo 4: Confirmar a branch principal e enviar para o GitHub
-Se a sua branch principal for `main`:
-```bash
-git branch -M main
-git push -u origin main
+# Autenticação e Base de Dados - Supabase (PostgreSQL)
+# Obtenha em: https://supabase.com/dashboard/project/_/settings/api
+VITE_SUPABASE_URL=https://seu-projeto.supabase.co
+VITE_SUPABASE_ANON_KEY=sua_chave_anonima_publica_aqui
 ```
-*(Se estiver a utilizar a branch `master`, substitua `main` por `master`: `git push -u origin master`)*
 
 ---
 
-## 🌐 6. Deploy Gratuito 24/7 na Nuvem
+## 🗄️ 4. Configuração da Base de Dados (Supabase)
 
-- **Render (Opção Recomendada)**:
-  1. Conecte o seu repositório GitHub no [Render.com](https://render.com).
-  2. Selecione **Web Service**.
-  3. Para a versão Node/React:
-     - Build Command: `npm install && npm run build`
-     - Start Command: `npm start`
-  4. Para a versão Python:
-     - Build Command: `pip install -r requirements.txt`
-     - Start Command: `uvicorn app:app --host 0.0.0.0 --port $PORT`
-- **Railway / Fly.io**:
-  - Deteção automática via `package.json` ou `Dockerfile`.
+1. Aceda ao painel do [Supabase](https://supabase.com/dashboard).
+2. Abra o **SQL Editor** do seu projeto e execute o ficheiro `supabase_schema.sql` incluído no repositório.
+3. Isso cria:
+   - Tabela `conversations` (conversas isoladas por utilizador via UUID).
+   - Tabela `messages` (mensagens com papéis `user`, `assistant`, `system`).
+   - Políticas de **Row Level Security (RLS)** ativas para garantir que nenhum utilizador aceda a dados de outro.
 
 ---
 
-## 👨‍💻 Créditos & Liderança
-- **Fundador & Arquiteto**: António Cassule Maurício
+## 🚀 5. Execução em Desenvolvimento e Produção
+
+### Desenvolvimento Local:
+```bash
+# 1. Instalar dependências
+npm install
+
+# 2. Iniciar servidor integrado (Express API + Vite Dev Server na porta 3000)
+npm run dev
+```
+Aceda a `http://localhost:3000`.
+
+### Verificação de Tipos e Build:
+```bash
+# Compilar frontend
+npm run build
+
+# Iniciar servidor de produção
+npm start
+```
+
+### Com Docker (Recomendado para Produção):
+```bash
+# 1. Construir imagem
+docker build -t nexa-assistant:latest .
+
+# 2. Executar contentor com volume para manter o WhatsApp conectado mesmo após reinicializações
+docker run -d \
+  --name nexa-assistant \
+  -p 3000:3000 \
+  -v nexa-wa-data:/app/data/wa-auth \
+  --env-file .env \
+  nexa-assistant:latest
+```
+
+---
+
+## 👨‍💻 Créditos
 - **Startup**: Maurícius
-- **Flagship**: NEXA Assistant
+- **Fundador & Arquiteto**: António Cassule Maurício
+- **Plataforma**: NEXA Assistant AI

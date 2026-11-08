@@ -5,34 +5,23 @@
  * Startup: Maurícius (Soluções Digitais, Automação e IA)
  * Fundador: António Cassule Maurício
  * 
- * Fornece:
- * 1. Conexão real com endpoints do backend (/api/whatsapp/send, /api/whatsapp/config, /api/whatsapp/webhook).
- * 2. Suporte à Meta WhatsApp Cloud API (Oficial) e pontes de instância (Baileys / Evolution API).
- * 3. Persistência de contactos e mensagens em Supabase ou armazenamento local resiliente.
- * 4. Atendimento automático de clientes com inteligência artificial NEXA (Qwen 3.8 Max).
+ * Suporta:
+ * 1. Conexão direta com WhatsApp Pessoal via Baileys (QR Code e Código de Pareamento de 8 dígitos).
+ * 2. Meta WhatsApp Cloud API Oficial (Graph API).
+ * 3. Envio e receção real de mensagens sem dados simulados.
+ * 4. Atendimento automático com IA NEXA (Qwen 3.8 Max com fallback Gemini).
  * ============================================================================
  */
 
-import { WhatsAppContact, WhatsAppMessage, WhatsAppConfig } from '../types';
+import { WhatsAppContact, WhatsAppMessage, WhatsAppConfig, WhatsAppQrState } from '../types';
 import { supabase } from './supabase';
 
-// ⚠️ SEM DADOS SIMULADOS: esta configuração inicial reflete o estado REAL do sistema.
-// connected=false até existir um Token de Acesso da Meta configurado (ou uma ponte
-// Evolution API/Baileys ativa). As estatísticas começam a zero e só crescem com
-// mensagens efetivamente enviadas/recebidas pelo backend.
 const DEFAULT_CONFIG: WhatsAppConfig = {
   connected: false,
   phoneNumber: '',
   instanceName: 'Maurícius NEXA Business Primary',
-  apiMode: 'cloud_api',
-  // Token gerado por dispositivo e persistido — mostrá-lo no painel é seguro porque
-  // só o dono da sessão o conhece; ao ligar a Meta Cloud API, define-se o mesmo valor
-  // no painel Business Manager na secção Webhook.
-  webhookVerifyToken: localStorage.getItem('nexa_wa_verify_token') || (() => {
-    const t = 'nexa-wa-' + Math.random().toString(36).slice(2, 10);
-    localStorage.setItem('nexa_wa_verify_token', t);
-    return t;
-  })(),
+  apiMode: 'personal_baileys',
+  webhookVerifyToken: '',
   autoReplyEnabled: false,
   autoReplyPrompt: 'És o NEXA no WhatsApp da Maurícius. Responde com educação, objetividade executiva em português e ajuda o cliente.',
   batteryLevel: 0,
@@ -42,23 +31,19 @@ const DEFAULT_CONFIG: WhatsAppConfig = {
 };
 
 /**
- * Obtém a configuração ativa do WhatsApp.
- * O backend é a fonte de verdade (config persistida no servidor); o localStorage
- * serve apenas como cache offline para quando o Express não está acessível.
+ * Obtém a configuração ativa do WhatsApp a partir do servidor backend.
  */
 export async function getWhatsAppConfig(): Promise<WhatsAppConfig> {
   try {
     const res = await fetch('/api/whatsapp/config');
     if (res.ok) {
       const data = await res.json();
-      // Remove campos hardcoded fictícios do servidor antigo (batteryLevel inventado)
       const merged: WhatsAppConfig = { ...DEFAULT_CONFIG, ...data };
-      if (!merged.phoneNumber) merged.connected = false;
       localStorage.setItem('mauricius_wa_config', JSON.stringify(merged));
       return merged;
     }
   } catch (err) {
-    console.warn('[WhatsApp Service] Backend indisponível, a usar cache local:', err);
+    console.warn('[WhatsApp Service] Backend indisponível ao obter config:', err);
   }
 
   const saved = localStorage.getItem('mauricius_wa_config');
@@ -72,16 +57,18 @@ export async function saveWhatsAppConfig(config: Partial<WhatsAppConfig>): Promi
   const current = await getWhatsAppConfig();
   const updated: WhatsAppConfig = { ...current, ...config };
 
-  // Guardar localmente
   localStorage.setItem('mauricius_wa_config', JSON.stringify(updated));
 
-  // Sincronizar com o backend
   try {
-    await fetch('/api/whatsapp/config', {
+    const res = await fetch('/api/whatsapp/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated)
     });
+    if (res.ok) {
+      const data = await res.json();
+      return data.config || updated;
+    }
   } catch (err) {
     console.warn('[WhatsApp Service] Erro ao sincronizar config com backend:', err);
   }
@@ -90,13 +77,62 @@ export async function saveWhatsAppConfig(config: Partial<WhatsAppConfig>): Promi
 }
 
 /**
- * Envia uma mensagem real pelo WhatsApp via backend Express
+ * Consulta o estado em tempo real do pareamento do WhatsApp (QR Code / Pareamento)
+ */
+export async function getWhatsAppQrSession(): Promise<WhatsAppQrState> {
+  try {
+    const res = await fetch('/api/whatsapp/qr');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[WhatsApp Service] Erro ao obter sessão QR:', err);
+  }
+  return { status: 'disconnected', error: 'Servidor indisponível' };
+}
+
+/**
+ * Solicita código de pareamento de 8 dígitos para o número de telefone informado
+ */
+export async function requestWhatsAppPairingCode(phoneNumber: string): Promise<{ success: boolean; pairingCode?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/whatsapp/pair-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNumber })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha de comunicação com o servidor' };
+  }
+}
+
+/**
+ * Desconecta a sessão ativa do WhatsApp e limpa as credenciais locais
+ */
+export async function disconnectWhatsAppSession(): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch('/api/whatsapp/logout', {
+      method: 'POST'
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[WhatsApp Service] Erro ao desconectar sessão:', err);
+  }
+  return { success: false };
+}
+
+/**
+ * Envia uma mensagem real pelo WhatsApp via backend Express.
+ * Se o envio falhar ou o WhatsApp estiver desconectado, retorna erro REAL sem simulações.
  */
 export async function sendWhatsAppMessageApi(
   contactPhone: string,
   contactName: string,
   text: string
-): Promise<{ success: boolean; messageId: string; status: 'sent' | 'delivered'; timestamp: string }> {
+): Promise<{ success: boolean; messageId?: string; status: 'sent' | 'delivered' | 'failed'; timestamp?: string; error?: string }> {
   try {
     const res = await fetch('/api/whatsapp/send', {
       method: 'POST',
@@ -108,56 +144,30 @@ export async function sendWhatsAppMessageApi(
       })
     });
 
-    if (res.ok) {
-      const data = await res.json();
+    const data = await res.json();
+
+    if (res.ok && (data.status === 'sent' || data.status === 'delivered')) {
       return {
         success: true,
         messageId: data.messageId || `wam-${Date.now()}`,
-        status: data.status || 'delivered',
-        timestamp: data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        status: data.status,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+    } else {
+      return {
+        success: false,
+        status: 'failed',
+        error: data.error || 'A mensagem não pôde ser enviada pelo WhatsApp.'
       };
     }
-  } catch (err) {
-    console.warn('[WhatsApp Service] Erro ao despachar mensagem pelo servidor:', err);
+  } catch (err: any) {
+    console.error('[WhatsApp Service] Erro de rede ao despachar mensagem:', err);
+    return {
+      success: false,
+      status: 'failed',
+      error: 'Falha de conexão com o servidor ao despachar mensagem.'
+    };
   }
-
-  // Fallback seguro de entrega
-  return {
-    success: true,
-    messageId: `wam-${Date.now()}`,
-    status: 'delivered',
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  };
-}
-
-/**
- * Simula ou processa a receção de uma mensagem de um cliente real
- * Dispara o Webhook do backend que opcionalmente ativa a resposta do NEXA
- */
-export async function simulateIncomingMessage(
-  fromPhone: string,
-  fromName: string,
-  text: string
-): Promise<{ reply?: string; autoReplied: boolean }> {
-  try {
-    const res = await fetch('/api/whatsapp/simulate-incoming', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: fromPhone,
-        name: fromName,
-        text
-      })
-    });
-
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.warn('[WhatsApp Service] Erro ao processar mensagem recebida:', err);
-  }
-
-  return { autoReplied: false };
 }
 
 /**
@@ -165,8 +175,7 @@ export async function simulateIncomingMessage(
  */
 export async function generateNexaWhatsAppSuggestion(
   contactName: string,
-  lastMessage: string,
-  userCompanyContext: string = 'Maurícius Tech'
+  lastMessage: string
 ): Promise<string> {
   try {
     const res = await fetch('/api/chat', {
@@ -195,11 +204,11 @@ Representa a Maurícius (fundada por António Cassule Maurício). Devolve apenas
     console.warn('[WhatsApp Service] Falha ao obter sugestão do NEXA:', err);
   }
 
-  return `Olá ${contactName}! Obrigado pela sua mensagem. Já registamos a sua solicitação na Maurícius e entraremos em contacto brevemente com os próximos passos.`;
+  return `Olá ${contactName}! Obrigado pela sua mensagem. A sua solicitação foi registada e entraremos em contacto com brevidade.`;
 }
 
 /**
- * Sincroniza um contacto real com a base de dados do Supabase
+ * Sincroniza um contacto com a base de dados do Supabase
  */
 export async function syncContactToSupabase(contact: WhatsAppContact, userId?: string) {
   if (!userId) return;

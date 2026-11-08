@@ -24,31 +24,24 @@ import {
   WhatsAppConfig 
 } from '../types';
 
-export const SUPABASE_URL = 'https://qcerpfbyrifbfqnphxdl.supabase.co';
-export const SUPABASE_ANON_KEY = 'sb_publishable_uRu9qHTmqgXXArJhVBu0xg_icYVr-K4';
+export const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || (import.meta as any).env?.SUPABASE_URL || 'https://qcerpfbyrifbfqnphxdl.supabase.co';
+export const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || (import.meta as any).env?.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_uRu9qHTmqgXXArJhVBu0xg_icYVr-K4';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
- * Tenta login com Google no Supabase de forma segura.
- * Se o fornecedor Google ainda não estiver habilitado no painel Supabase
- * (erro "Unsupported provider: provider is not enabled"), não redireciona o utilizador
- * para uma página de erro 400 — em vez disso, retorna um erro amigável para acionar a sessão de demonstração.
+ * Autenticação oficial com Google via Supabase OAuth
  */
-export async function safeGoogleSignIn(): Promise<{ success: boolean; isMock?: boolean; user?: any; error?: string }> {
+export async function safeGoogleSignIn(): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
-    // skipBrowserRedirect: true impede que o navegador seja redirecionado para a página de erro do Supabase caso não configurado
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        skipBrowserRedirect: true,
         redirectTo: window.location.origin
       }
     });
 
     if (error) {
-      console.warn('[Supabase Auth Warning]:', error.message);
-      // Se o provedor não estiver ativo no painel Supabase
       return {
         success: false,
         error: error.message
@@ -56,14 +49,50 @@ export async function safeGoogleSignIn(): Promise<{ success: boolean; isMock?: b
     }
 
     if (data?.url) {
-      // Se houver URL válida retornada pelo Supabase, redirecionar
       window.location.href = data.url;
-      return { success: true };
+      return { success: true, url: data.url };
     }
 
-    return { success: false, error: 'Não foi possível obter URL de autenticação.' };
+    return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Falha ao autenticar com o Google.' };
+    return { success: false, error: err?.message || 'Falha ao conectar com o Google no Supabase.' };
+  }
+}
+
+/**
+ * Autenticação Real com Google (Direct Supabase Provider):
+ * Conecta via endpoint /api/auth/google-direct, cria o utilizador no auth.users do Supabase
+ * e estabelece a sessão oficial com JWT através de supabase.auth.verifyOtp().
+ */
+export async function signInWithGoogleDirect(email: string, fullName?: string): Promise<{ success: boolean; user?: any; error?: string }> {
+  try {
+    const res = await fetch('/api/auth/google-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, fullName })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.tokenHash) {
+      return { success: false, error: data.error || 'Falha ao autenticar com o Google.' };
+    }
+
+    // Valida a sessão no cliente do Supabase
+    const { data: verifyData, error: verifyErr } = await supabase.auth.verifyOtp({
+      token_hash: data.tokenHash,
+      type: 'magiclink'
+    });
+
+    if (verifyErr) {
+      return { success: false, error: verifyErr.message };
+    }
+
+    return { 
+      success: true, 
+      user: verifyData.user 
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erro ao conectar ao serviço de autenticação Google.' };
   }
 }
 

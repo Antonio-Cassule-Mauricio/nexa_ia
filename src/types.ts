@@ -63,7 +63,7 @@ export interface WhatsAppConfig {
   connected: boolean;
   phoneNumber: string;
   instanceName: string;
-  apiMode: 'cloud_api' | 'qr_bridge';
+  apiMode: 'cloud_api' | 'qr_bridge' | 'personal_baileys';
   metaPhoneNumberId?: string;
   metaBusinessAccountId?: string;
   metaAccessToken?: string;
@@ -74,6 +74,16 @@ export interface WhatsAppConfig {
   lastSync?: string;
   totalSent?: number;
   totalReceived?: number;
+}
+
+export interface WhatsAppQrState {
+  status: 'disconnected' | 'ready_to_scan' | 'pairing' | 'authenticated';
+  qrCode?: string;
+  pairingCode?: string;
+  connectedPhone?: string;
+  connectedName?: string;
+  lastConnected?: string;
+  error?: string;
 }
 
 export interface AppSettings {

@@ -24,6 +24,7 @@ import driveIcon from '../assets/icons/drive.svg';
 import docsIcon from '../assets/icons/docs.svg';
 import slackIcon from '../assets/icons/slack.svg';
 import { safeGoogleSignIn, supabase } from '../services/supabase';
+import { getWhatsAppConfig } from '../services/whatsapp';
 
 export interface ConnectorInfo {
   id: 'whatsapp' | 'gmail' | 'calendar' | 'drive' | 'docs' | 'slack';
@@ -47,6 +48,8 @@ export const NexaConnectorsSection: React.FC<NexaConnectorsSectionProps> = ({
   currentUser,
   onOpenAuth
 }) => {
+  const [waConfig, setWaConfig] = useState<any>(null);
+
   // Estado real de cada conector guardado no navegador e sincronizado
   const [connectors, setConnectors] = useState<ConnectorInfo[]>(() => {
     const saved = localStorage.getItem('nexa_connectors_state');
@@ -60,13 +63,11 @@ export const NexaConnectorsSection: React.FC<NexaConnectorsSectionProps> = ({
     return [
       {
         id: 'whatsapp',
-        name: 'WhatsApp Business',
+        name: 'WhatsApp Business & Pessoal',
         category: 'Comunicação',
         icon: whatsappIcon,
         description: 'Recebe mensagens de clientes, despacha avisos e ativa a auto-resposta de IA.',
-        status: 'connected',
-        connectedAccount: '+244 923 001 234 (Maurícius NEXA)',
-        lastSync: 'Em tempo real',
+        status: 'disconnected',
         scopes: ['messages:read', 'messages:write', 'webhooks:listen'],
         protocol: 'Meta Cloud API / Webhook'
       },
@@ -130,6 +131,28 @@ export const NexaConnectorsSection: React.FC<NexaConnectorsSectionProps> = ({
       }
     ];
   });
+
+  // Sincroniza estado real do WhatsApp com o backend
+  useEffect(() => {
+    getWhatsAppConfig().then(cfg => {
+      if (cfg) {
+        setWaConfig(cfg);
+        setConnectors(prev =>
+          prev.map(c => {
+            if (c.id === 'whatsapp') {
+              return {
+                ...c,
+                status: cfg.connected ? 'connected' : 'disconnected',
+                connectedAccount: cfg.connected ? (cfg.phoneNumber || 'Sessão WhatsApp Ativa') : undefined,
+                lastSync: cfg.connected ? (cfg.lastSync || 'Agora') : undefined
+              };
+            }
+            return c;
+          })
+        );
+      }
+    });
+  }, []);
 
   // Salva alterações
   useEffect(() => {
@@ -461,8 +484,7 @@ export const NexaConnectorsSection: React.FC<NexaConnectorsSectionProps> = ({
 
                 <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
                   <p className="font-bold text-emerald-300">Token de Verificação:</p>
-                  {/* Valor REAL lido da configuração do backend (por dispositivo), nunca um segredo partilhado no código */}
-                  <code className="text-[11px] text-emerald-200 font-mono break-all select-all">{config.webhookVerifyToken}</code>
+                  <code className="text-[11px] text-emerald-200 font-mono break-all select-all">{waConfig?.webhookVerifyToken || 'Configurar no .env'}</code>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">

@@ -24,7 +24,8 @@ import {
   WhatsAppMessage, 
   AppSettings, 
   Message,
-  TaskStatus 
+  TaskStatus,
+  TaskPriority 
 } from './types';
 import { 
   INITIAL_CONVERSATION, 
@@ -491,6 +492,16 @@ export const App: React.FC = () => {
     showToast('Nova tarefa criada');
   };
 
+  const handleAddTaskDirectly = (taskData: { title: string; priority: TaskPriority; dueDate: string; description?: string }) => {
+    handleAddTask({
+      title: taskData.title,
+      priority: taskData.priority,
+      dueDate: taskData.dueDate,
+      description: taskData.description,
+      status: 'pendente'
+    });
+  };
+
   const handleUpdateTaskStatus = (id: string, status: TaskStatus) => {
     setTasks(prev =>
       prev.map(t => {
@@ -854,7 +865,7 @@ export const App: React.FC = () => {
             activeModelName={serverStatus.engine}
             onGoToNexaSite={() => setViewMode('nexa')}
             onNewConversation={handleNewConversation}
-            onAddTaskDirectly={handleAddTask}
+            onAddTaskDirectly={handleAddTaskDirectly}
             onSendWhatsAppDirectly={handleSendWhatsAppMessage}
           />
         )}

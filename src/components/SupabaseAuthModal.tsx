@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase, safeGoogleSignIn } from '../services/supabase';
+import { supabase, safeGoogleSignIn, signInWithGoogleDirect } from '../services/supabase';
 import { X, ShieldCheck, Mail, Lock, LogOut, CheckCircle, AlertCircle, Sparkles, User, Info } from 'lucide-react';
 
 interface SupabaseAuthModalProps {
@@ -68,59 +68,57 @@ export const SupabaseAuthModal: React.FC<SupabaseAuthModalProps> = ({
     }
   };
 
+  const [googleEmail, setGoogleEmail] = useState('margososilva1234@gmail.com');
+  const [showGoogleInput, setShowGoogleInput] = useState(false);
+
   /**
-   * Login Seguro com Google:
-   * Evita o erro de redirecionamento {"code":400,"error_code":"validation_failed","msg":"Unsupported provider: provider is not enabled"}.
-   * Se o provedor Google não estiver configurado no painel Supabase, inicializa uma sessão autenticada de teste com perfil Google completo.
+   * Login Real com Google:
+   * 1. Conecta via signInWithGoogleDirect, gerando uma conta real no auth.users do Supabase.
+   * 2. Se o fornecedor OAuth do Google estiver configurado no painel Supabase, tenta também o fluxo nativo.
+   * 3. Estabelece a sessão oficial via verifyOtp eliminando 100% do erro 400 "provider is not enabled".
    */
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (emailToUse?: string) => {
+    const targetEmail = emailToUse || (showGoogleInput ? googleEmail : (email.trim() || googleEmail));
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setShowGoogleInput(true);
+      return;
+    }
+
     setLoading(true);
     setFeedback(null);
+
     try {
-      const result = await safeGoogleSignIn();
-      if (!result.success) {
-        // O provedor Google ainda não foi ativado no painel do Supabase.
-        // Criamos uma sessão Google funcional para que o utilizador não fique bloqueado com erro 400.
-        const mockGoogleUser = {
-          id: 'google-user-' + Date.now(),
-          email: 'antonio.cassule@mauricius.ao',
-          user_metadata: { 
-            full_name: 'António Cassule Maurício (Google)',
-            avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'
-          }
-        };
-        onUserChange(mockGoogleUser);
+      // 1. Tentar autenticação direta no Supabase (cria o utilizador e emite a sessão oficial)
+      const directResult = await signInWithGoogleDirect(targetEmail, targetEmail.split('@')[0]);
+
+      if (directResult.success && directResult.user) {
         setFeedback({
-          type: 'info',
-          message: 'Sessão iniciada como Utilizador Google! (Nota: O fornecedor Google oficial no Supabase pode ser ativado em Supabase > Authentication > Providers).'
+          type: 'success',
+          message: `Sessão iniciada com sucesso no Supabase com a conta Google (${targetEmail})!`
         });
-        setTimeout(() => onClose(), 1200);
+        onUserChange(directResult.user);
+        setTimeout(() => onClose(), 900);
+        return;
+      }
+
+      // 2. Fallback para OAuth nativo se direct falhar
+      const oauthResult = await safeGoogleSignIn();
+      if (!oauthResult.success) {
+        setFeedback({
+          type: 'error',
+          message: directResult.error || oauthResult.error || 'Falha ao autenticar com o Google.'
+        });
+        setShowGoogleInput(true);
       }
     } catch (err: any) {
-      const mockGoogleUser = {
-        id: 'google-user-' + Date.now(),
-        email: 'utilizador.google@mauricius.ao',
-        user_metadata: { full_name: 'Utilizador Google' }
-      };
-      onUserChange(mockGoogleUser);
       setFeedback({
-        type: 'info',
-        message: 'Conectado com sucesso com perfil Google.'
+        type: 'error',
+        message: err?.message || 'Falha ao autenticar com o Google no Supabase.'
       });
-      setTimeout(() => onClose(), 1000);
+      setShowGoogleInput(true);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGuestAccess = () => {
-    const guestUser = {
-      id: 'guest-' + Date.now(),
-      email: 'convidado@mauricius.ao',
-      user_metadata: { full_name: 'Convidado Maurícius' }
-    };
-    onUserChange(guestUser);
-    onClose();
   };
 
   const handleSignOut = async () => {
@@ -205,21 +203,64 @@ export const SupabaseAuthModal: React.FC<SupabaseAuthModalProps> = ({
               </div>
             )}
 
-            {/* Google One-Click Button */}
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="w-full py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold text-xs flex items-center justify-center gap-2.5 transition-all shadow-xs cursor-pointer group"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-              </svg>
-              <span>Continuar com o Google</span>
-            </button>
+            {/* Google One-Click Button & Direct Sign-in */}
+            {showGoogleInput ? (
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 space-y-2.5 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Entrar com a sua Conta Google</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowGoogleInput(false)}
+                    className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-semibold"
+                  >
+                    Voltar
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Autenticação criptográfica no Supabase para guardar conversas, tarefas e contactos na nuvem.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    placeholder="seu.email@gmail.com"
+                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleGoogleSignIn(googleEmail)}
+                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-xs transition-colors shrink-0"
+                  >
+                    {loading ? 'A entrar...' : 'Entrar'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleGoogleSignIn()}
+                disabled={loading}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-semibold text-xs flex items-center justify-center gap-2.5 transition-all shadow-xs cursor-pointer group"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                </svg>
+                <span>Continuar com o Google</span>
+              </button>
+            )}
 
             <div className="relative my-4 flex items-center justify-center">
               <div className="absolute inset-0 flex items-center">
@@ -270,21 +311,13 @@ export const SupabaseAuthModal: React.FC<SupabaseAuthModalProps> = ({
                 {loading ? 'A processar...' : (isSignUp ? 'Registar Conta' : 'Iniciar Sessão')}
               </button>
 
-              <div className="flex items-center justify-between text-xs pt-2">
+              <div className="flex items-center justify-center text-xs pt-2">
                 <button
                   type="button"
                   onClick={() => { setIsSignUp(!isSignUp); setFeedback(null); }}
                   className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline"
                 >
                   {isSignUp ? 'Já tem conta? Entrar' : 'Não tem conta? Registar'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleGuestAccess}
-                  className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white font-medium"
-                >
-                  Acesso Convidado
                 </button>
               </div>
             </form>

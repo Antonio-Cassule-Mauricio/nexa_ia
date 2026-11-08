@@ -342,14 +342,25 @@ export const ChatView: React.FC<ChatViewProps> = ({
         title: `[Calendário] ${title}`,
         priority: 'alta',
         dueDate: date || 'Amanhã',
-        description: 'Sincronizado automaticamente com Google Calendar pelo NEXA'
+        description: 'Agendamento estruturado pelo NEXA Assistant'
       });
-      showToast(`Evento "${title}" agendado no Calendário e Tarefas!`);
     }
+
+    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&details=${encodeURIComponent('Compromisso estruturado pelo NEXA Assistant - Maurícius')}`;
+    const a = document.createElement('a');
+    a.href = gCalUrl;
+    a.target = '_blank';
+    a.rel = 'noreferrer';
+    a.click();
+    showToast(`Evento "${title}" aberto no Google Calendar e registado nas Tarefas!`);
   };
 
   const handleExecuteEmailAction = (recipient: string, subject: string) => {
-    showToast(`E-mail com assunto "${subject}" preparado e enviado para ${recipient}!`);
+    const mailtoUrl = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent('Olá,\n\nSegue a minuta de comunicação executiva conforme estruturada com o assistente NEXA da Maurícius.\n\nCom os melhores cumprimentos,\nAntónio Cassule Maurício')}`;
+    const a = document.createElement('a');
+    a.href = mailtoUrl;
+    a.click();
+    showToast(`Cliente de e-mail aberto com a minuta pronta para ${recipient}!`);
   };
 
   return (

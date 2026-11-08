@@ -66,12 +66,12 @@ export const NexaLandingPage: React.FC<NexaLandingPageProps> = ({
       region: 'eu-north-1'
     },
     whatsapp: {
-      connected: true,
+      connected: false,
       instance: 'Maurícius NEXA Business Primary',
-      phone: '+244 923 001 234',
-      totalSent: 142,
-      totalReceived: 98,
-      autoReply: true
+      phone: '',
+      totalSent: 0,
+      totalReceived: 0,
+      autoReply: false
     }
   });
 
